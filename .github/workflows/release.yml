@@ -75,15 +75,12 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # macOS signing (optional — set these repo secrets to sign & notarize).
-          # Without signing the app still works, but users need to bypass
-          # Gatekeeper on first launch.
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # macOS signing is intentionally not wired here. Passing empty
+          # APPLE_CERTIFICATE env vars makes the Tauri bundler try to run
+          # `security import` on empty input and fail. When you later set
+          # up a Developer ID cert, add the APPLE_CERTIFICATE /
+          # APPLE_CERTIFICATE_PASSWORD / APPLE_SIGNING_IDENTITY /
+          # APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID env mappings here.
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Shellboard ${{ github.ref_name }}"
