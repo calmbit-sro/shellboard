@@ -1,0 +1,57 @@
+.color-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.color-picker__swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.color-picker__swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  padding: 0;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.color-picker__swatch:hover {
+  transform: scale(1.1);
+}
+
+.color-picker__swatch--selected {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px #0a84ff;
+}
+
+.color-picker__custom {
+  font-size: 12px;
+  color: #b0b0b0;
+}
+
+.color-picker__custom label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.color-picker__custom input {
+  background: #1e1e1e;
+  color: #e0e0e0;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 4px 6px;
+  width: 100px;
+  font-family: "Menlo", Consolas, monospace;
+  font-size: 12px;
+}
+
+.color-picker__custom input:focus {
+  outline: none;
+  border-color: #0a84ff;
+}

@@ -1,0 +1,132 @@
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--theme-bg, #1e1e1e);
+}
+
+.app {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: row;
+  background: var(--theme-bg, #1e1e1e);
+}
+
+.app__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--theme-bg, #1e1e1e);
+}
+
+.terminal-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+}
+
+/* All slots overlap via absolute positioning. The inactive ones stay laid out
+ * (same size as active) but invisible — switching is a compositor-only
+ * transition, so no reflow, no resize events, no flicker. */
+.terminal-host__slot {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.terminal-host__slot--active {
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.terminal-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.terminal-container {
+  width: 100%;
+  height: 100%;
+  padding: 4px;
+  box-sizing: border-box;
+}
+
+.terminal-container .xterm,
+.terminal-container .xterm-viewport,
+.terminal-container .xterm-screen {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.terminal-search {
+  position: absolute;
+  top: 8px;
+  right: 14px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: color-mix(in srgb, var(--theme-bg, #1e1e1e) 85%, #ffffff 15%);
+  border: 1px solid var(--theme-border, #1a1a1a);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 20;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: var(--ui-font-size, 12px);
+}
+
+.terminal-search input {
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  font: inherit;
+  padding: 4px 6px;
+  min-width: 180px;
+  outline: none;
+}
+
+.terminal-search input::placeholder {
+  color: #808080;
+}
+
+.terminal-search button {
+  background: transparent;
+  border: none;
+  color: #b0b0b0;
+  font: inherit;
+  font-size: 12px;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.terminal-search button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+.app__empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #808080;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 13px;
+}

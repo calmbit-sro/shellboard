@@ -1,0 +1,154 @@
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.settings__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings__heading {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #909090;
+}
+
+.settings__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings__field label {
+  font-size: 12px;
+  color: #b0b0b0;
+}
+
+.settings__field input[type="text"],
+.settings__field input[type="number"],
+.settings__field select {
+  background: #1e1e1e;
+  color: #ffffff;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.settings__field input:focus,
+.settings__field select:focus {
+  outline: none;
+  border-color: #0a84ff;
+}
+
+.settings__field input[type="number"] {
+  width: 100px;
+}
+
+.settings__text {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: "Menlo", Consolas, monospace;
+}
+
+.settings__swatches {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.settings__swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.settings__field--check {
+  gap: 6px;
+}
+
+.settings__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #e0e0e0;
+  cursor: pointer;
+}
+
+.settings__check input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.settings__hint {
+  margin: 0;
+  font-size: 11px;
+  color: #909090;
+  line-height: 1.4;
+}
+
+.settings__hint code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0 3px;
+  border-radius: 3px;
+  font-family: "Menlo", Consolas, monospace;
+}
+
+.settings__footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid #1a1a1a;
+  padding-top: 14px;
+  margin-top: 4px;
+}
+
+.settings__reset,
+.settings__done {
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.settings__reset,
+.settings__about {
+  background: transparent;
+  border: 1px solid #444;
+  color: #b0b0b0;
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.settings__about {
+  margin-right: auto;
+}
+
+.settings__reset:hover,
+.settings__about:hover {
+  background: #3a3a3a;
+  color: #e0e0e0;
+}
+
+.settings__done {
+  background: #0a84ff;
+  border: 1px solid #0a84ff;
+  color: #ffffff;
+}
+
+.settings__done:hover {
+  background: #0a78e5;
+}

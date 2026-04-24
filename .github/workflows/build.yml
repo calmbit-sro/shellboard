@@ -1,0 +1,84 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            rust_targets: "aarch64-apple-darwin,x86_64-apple-darwin"
+          - platform: ubuntu-22.04
+            rust_targets: ""
+          - platform: windows-latest
+            rust_targets: ""
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+
+      - name: Install Linux system deps
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libxdo-dev
+
+      - name: Install npm deps
+        run: npm ci
+
+      - name: Type-check + bundle frontend
+        run: npm run build
+
+      - name: Cargo check (Rust backend)
+        working-directory: src-tauri
+        run: cargo check --locked
+
+      - name: Cargo fmt check
+        working-directory: src-tauri
+        run: cargo fmt --check
+        continue-on-error: true
+
+      - name: Build Tauri app (non-release)
+        run: npm run tauri build -- --debug
+        env:
+          # Skip signing on CI — release workflow handles that separately.
+          TAURI_SIGNING_PRIVATE_KEY: ""
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+
+      - name: Upload bundle artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: shellboard-${{ matrix.platform }}
+          path: |
+            src-tauri/target/debug/bundle/**
+          if-no-files-found: warn
+          retention-days: 7

@@ -1,0 +1,76 @@
+# Build environment for producing Shellboard's Linux release artifacts
+# (.AppImage + .deb + .rpm) from any host that runs Docker — notably
+# macOS. Matches the system dep list used by the GitHub Actions CI
+# workflow so local builds and CI builds behave the same.
+
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG=C.UTF-8
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        appstream \
+        build-essential \
+        ca-certificates \
+        curl \
+        desktop-file-utils \
+        file \
+        fuse3 \
+        gdk-pixbuf2.0-bin \
+        git \
+        libayatana-appindicator3-dev \
+        libfuse2 \
+        libglib2.0-bin \
+        libgtk-3-bin \
+        librsvg2-dev \
+        librsvg2-bin \
+        libssl-dev \
+        libwebkit2gtk-4.1-dev \
+        libxdo-dev \
+        patchelf \
+        pkg-config \
+        rpm \
+        shared-mime-info \
+        squashfs-tools \
+        xdg-utils \
+        xz-utils \
+        zsync \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node.js 22 from NodeSource — the system nodejs package on 22.04 is too old
+# for Vite 7.
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Rust stable. The installer adds ~/.cargo/bin to PATH via profile.d/cargo.sh
+# but Docker shells don't always source that, so set PATH explicitly.
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --default-toolchain stable --profile minimal
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Persist cargo/npm caches across runs via volumes attached at run time.
+ENV CARGO_HOME=/cache/cargo
+ENV NPM_CONFIG_CACHE=/cache/npm
+# Keep Linux build artifacts separate from the host macOS target/ so both
+# platforms can coexist in the repo without interfering.
+ENV CARGO_TARGET_DIR=/app/src-tauri/target-linux
+
+# Cap parallel rustc processes so the container doesn't OOM-kill on
+# heavyweight crates like `gtk` / `webkit2gtk-sys` which can each need
+# 1–2 GB. Docker Desktop defaults to 4 GB RAM; with this cap the build
+# fits comfortably. Override at run time if your Docker has more memory:
+#   docker run -e CARGO_BUILD_JOBS=4 ...
+ENV CARGO_BUILD_JOBS=2
+
+# Tauri's AppImage bundler runs linuxdeploy.AppImage to package the app.
+# AppImages normally self-mount via FUSE, which isn't available in an
+# unprivileged Docker container. APPIMAGE_EXTRACT_AND_RUN=1 makes every
+# AppImage extract to a temp dir and run from there instead.
+ENV APPIMAGE_EXTRACT_AND_RUN=1
+# `strip` can misbehave under emulation (Rosetta on Apple Silicon); skip it.
+# Tauri's release profile already strips debug info via its own setting.
+ENV NO_STRIP=1
+
+WORKDIR /app

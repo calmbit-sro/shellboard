@@ -1,0 +1,96 @@
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 12px;
+  background: color-mix(in srgb, var(--theme-bg, #1e1e1e) 88%, #ffffff 12%);
+  border-top: 1px solid var(--theme-border, #1a1a1a);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 11px;
+  color: #a0a0a0;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.status-bar__segment {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-bar__sep {
+  opacity: 0.4;
+}
+
+.status-bar__cwd {
+  font-family: "Menlo", Consolas, monospace;
+  max-width: 60%;
+}
+
+.status-bar__branch {
+  color: #0a84ff;
+  font-family: "Menlo", Consolas, monospace;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-bar__branch-name {
+  white-space: nowrap;
+}
+
+.status-bar__git-staged {
+  color: #22c55e;
+}
+
+.status-bar__git-modified {
+  color: #e5a200;
+}
+
+.status-bar__git-untracked {
+  color: #909090;
+}
+
+.status-bar__git-ahead {
+  color: #22c55e;
+}
+
+.status-bar__git-behind {
+  color: #ef4444;
+}
+
+.status-bar__git-conflicts {
+  color: #ef4444;
+}
+
+.status-bar__help {
+  margin-left: auto;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: #808080;
+  border: 1px solid #444;
+  border-radius: 50%;
+  font-family: "Menlo", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.status-bar__help:hover {
+  color: #ffffff;
+  border-color: #0a84ff;
+  background: rgba(10, 132, 255, 0.15);
+}
+
+.status-bar__version {
+  font-family: "Menlo", Consolas, monospace;
+  font-size: 10px;
+  color: #707070;
+  letter-spacing: 0.3px;
+}

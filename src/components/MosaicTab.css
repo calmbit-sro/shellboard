@@ -1,0 +1,62 @@
+/* Dark theme override for react-mosaic-component; avoids pulling in Blueprint. */
+
+.mosaic-dark.mosaic {
+  position: relative;
+  background: var(--theme-bg, #1e1e1e);
+}
+
+.mosaic-dark .mosaic-root {
+  background: var(--theme-bg, #1e1e1e);
+}
+
+.mosaic-dark .mosaic-tile {
+  margin: 0;
+  border-radius: 0;
+  background: var(--theme-bg, #1e1e1e);
+}
+
+.mosaic-dark .mosaic-split {
+  background: transparent;
+  z-index: 1;
+}
+
+.mosaic-dark .mosaic-split:hover {
+  background: #0a84ff;
+}
+
+.mosaic-dark .mosaic-split.-row {
+  width: 6px;
+  margin-left: -3px;
+}
+
+.mosaic-dark .mosaic-split.-column {
+  height: 6px;
+  margin-top: -3px;
+}
+
+/* Lib CSS only positions .mosaic-split-line; width/height defaults to 0,
+ * so set the cross-axis size explicitly for the divider to be visible. */
+.mosaic-dark .mosaic-split-line {
+  background: #3a3a3a;
+}
+
+.mosaic-dark .mosaic-split.-row .mosaic-split-line {
+  width: 1px;
+}
+
+.mosaic-dark .mosaic-split.-column .mosaic-split-line {
+  height: 1px;
+}
+
+/* Hide drop target overlays and preview shadows that Blueprint theme styles;
+   we don't use drag-to-rearrange in M3 but Mosaic still mounts them. */
+.mosaic-dark .drop-target-container .drop-target {
+  background: rgba(10, 132, 255, 0.2);
+  border: 1px solid #0a84ff;
+}
+
+.panel {
+  position: absolute;
+  inset: 0;
+  background: var(--theme-bg, #1e1e1e);
+}

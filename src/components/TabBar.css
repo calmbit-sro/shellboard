@@ -1,0 +1,130 @@
+.tab-bar {
+  display: flex;
+  align-items: stretch;
+  height: 32px;
+  background: var(--theme-chrome, #252526);
+  border-bottom: 1px solid var(--theme-border, #1a1a1a);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  user-select: none;
+  flex-shrink: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: var(--ui-font-size, 12px);
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 12px;
+  min-width: 80px;
+  max-width: 200px;
+  background: #2d2d2d;
+  color: #b0b0b0;
+  border-right: 1px solid var(--theme-border, #1a1a1a);
+  cursor: pointer;
+  position: relative;
+  touch-action: none;
+  user-select: none;
+}
+
+.tab:hover {
+  background: #333333;
+  color: #e0e0e0;
+}
+
+.tab--active {
+  background: var(--theme-bg, #1e1e1e);
+  color: #ffffff;
+}
+
+.tab--active::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--tab-accent, #0a84ff);
+}
+
+.tab__activity {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--tab-accent, #0a84ff);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--tab-accent, #0a84ff) 60%, transparent);
+}
+
+.tab__broadcast {
+  font-size: 10px;
+  line-height: 1;
+  color: var(--tab-accent, #0a84ff);
+  flex-shrink: 0;
+}
+
+.tab__title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab__input {
+  flex: 1;
+  min-width: 0;
+  background: #1e1e1e;
+  border: 1px solid var(--tab-accent, #0a84ff);
+  border-radius: 3px;
+  color: #ffffff;
+  font: inherit;
+  padding: 1px 4px;
+}
+
+.tab__input:focus {
+  outline: none;
+}
+
+.tab__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 14px;
+  line-height: 1;
+  border-radius: 3px;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0.6;
+}
+
+.tab__close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  opacity: 1;
+}
+
+.tab-bar__add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: #b0b0b0;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.tab-bar__add:hover {
+  background: #333333;
+  color: #ffffff;
+}

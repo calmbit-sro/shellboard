@@ -1,0 +1,111 @@
+name: Release
+
+# Triggered by tag push (e.g. `git tag v0.1.0 && git push origin v0.1.0`).
+# Builds installable bundles for macOS (Apple Silicon + Intel) and Linux,
+# then creates a DRAFT GitHub Release so you can review and publish manually.
+#
+# Windows is optional; enable it by adding `windows-latest` to the matrix.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            rust_target: aarch64-apple-darwin
+            args: "--target aarch64-apple-darwin"
+            label: "macOS (Apple Silicon)"
+          - platform: macos-13
+            rust_target: x86_64-apple-darwin
+            args: "--target x86_64-apple-darwin"
+            label: "macOS (Intel)"
+          - platform: ubuntu-22.04
+            rust_target: ""
+            args: ""
+            label: "Linux"
+
+    name: Build ${{ matrix.label }}
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+          key: release-${{ matrix.platform }}-${{ matrix.rust_target }}
+
+      - name: Install Linux system deps
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libxdo-dev
+
+      - name: Install npm deps
+        run: npm ci
+
+      - name: Build & upload release artifacts
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS signing (optional — set these repo secrets to sign & notarize).
+          # Without signing the app still works, but users need to bypass
+          # Gatekeeper on first launch.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Shellboard ${{ github.ref_name }}"
+          releaseBody: |
+            ### Install
+
+            - **macOS (Apple Silicon)**: `Shellboard_*_aarch64.dmg` — open, drag into *Applications*.
+            - **macOS (Intel)**: `Shellboard_*_x64.dmg` — open, drag into *Applications*.
+            - **Linux (AppImage)**: `Shellboard_*.AppImage` — `chmod +x` and run.
+            - **Linux (Debian/Ubuntu)**: `Shellboard_*_amd64.deb` — `sudo apt install ./Shellboard_*.deb`.
+
+            ### macOS: unsigned-build notice
+
+            This build isn't code-signed. On first launch macOS Gatekeeper will refuse to open it.
+
+            - **Option 1** — right-click the app in *Applications* → **Open** → **Open anyway**.
+            - **Option 2** — strip the quarantine attribute:
+              ```sh
+              xattr -cr /Applications/Shellboard.app
+              ```
+
+            After either step the app launches normally every time.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

@@ -1,0 +1,121 @@
+.snippets {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.snippets__empty {
+  color: #909090;
+  font-size: 12px;
+  padding: 8px 2px;
+  line-height: 1.5;
+}
+
+.snippets__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.snippets__row {
+  display: grid;
+  grid-template-columns: 120px 1fr auto auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.snippets__name,
+.snippets__command {
+  background: #1e1e1e;
+  color: #ffffff;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.snippets__command {
+  font-family: "Menlo", Consolas, monospace;
+}
+
+.snippets__name:focus,
+.snippets__command:focus {
+  outline: none;
+  border-color: #0a84ff;
+}
+
+.snippets__run {
+  background: #0a84ff;
+  color: #ffffff;
+  border: 1px solid #0a84ff;
+  border-radius: 4px;
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.snippets__run:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.snippets__run:hover:not(:disabled) {
+  background: #0a78e5;
+}
+
+.snippets__remove {
+  background: transparent;
+  color: #808080;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.snippets__remove:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.snippets__actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid #1a1a1a;
+  padding-top: 12px;
+}
+
+.snippets__add {
+  background: transparent;
+  border: 1px solid #444;
+  color: #b0b0b0;
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.snippets__add:hover {
+  background: #3a3a3a;
+  color: #e0e0e0;
+}
+
+.snippets__done {
+  background: #0a84ff;
+  color: #ffffff;
+  border: 1px solid #0a84ff;
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.snippets__done:hover {
+  background: #0a78e5;
+}

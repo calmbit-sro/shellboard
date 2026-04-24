@@ -1,0 +1,49 @@
+.error-boundary {
+  padding: 32px;
+  color: #e0e0e0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  max-width: 640px;
+  margin: 10vh auto;
+}
+
+.error-boundary h1 {
+  margin: 0 0 12px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.error-boundary__message {
+  background: #2d2d2d;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin: 0 0 16px;
+  color: #ff7b72;
+  font-family: "Menlo", Consolas, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+
+.error-boundary__hint {
+  color: #909090;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.error-boundary__reload {
+  margin-top: 14px;
+  background: #0a84ff;
+  color: #ffffff;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.error-boundary__reload:hover {
+  background: #0a78e5;
+}
