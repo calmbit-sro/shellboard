@@ -74,6 +74,11 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [addProjectOpen, setAddProjectOpen] = useState(false);
+  // When the add-project flow is launched from a group's context menu we
+  // pre-select that group in the form. null means "No group" / fall-back.
+  const [addProjectGroupId, setAddProjectGroupId] = useState<string | null>(
+    null,
+  );
   const [aboutOpen, setAboutOpen] = useState(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -377,7 +382,10 @@ function App() {
       {sidebarVisible && (
         <Sidebar
           onOpenSettings={() => setSettingsOpen(true)}
-          onAddProject={() => setAddProjectOpen(true)}
+          onAddProject={(groupId) => {
+            setAddProjectGroupId(groupId ?? null);
+            setAddProjectOpen(true);
+          }}
         />
       )}
       <main className="app__main">
@@ -409,6 +417,7 @@ function App() {
         }}
         onAddProject={() => {
           setPaletteOpen(false);
+          setAddProjectGroupId(null);
           setAddProjectOpen(true);
         }}
         onOpenAbout={() => {
@@ -426,7 +435,11 @@ function App() {
       />
       <AddProjectFlow
         open={addProjectOpen}
-        onClose={() => setAddProjectOpen(false)}
+        onClose={() => {
+          setAddProjectOpen(false);
+          setAddProjectGroupId(null);
+        }}
+        initialGroupId={addProjectGroupId}
       />
       <AboutDialog
         open={aboutOpen}

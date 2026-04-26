@@ -39,7 +39,11 @@ type GroupCtxState = {
 };
 type CtxState = ProjectCtxState | GroupCtxState;
 
-export function ProjectList() {
+type ProjectListProps = {
+  onAddProject: (groupId?: string | null) => void;
+};
+
+export function ProjectList({ onAddProject }: ProjectListProps) {
   const projects = useAppStore((s) => s.projects);
   const groups = useAppStore((s) => s.groups);
   const activeProjectId = useAppStore((s) => s.activeProjectId);
@@ -170,6 +174,10 @@ export function ProjectList() {
     if (!group) return [];
     const idx = groups.findIndex((g) => g.id === groupId);
     const items: MenuItem[] = [
+      {
+        label: "Add project here",
+        onClick: () => onAddProject(groupId),
+      },
       {
         label: "Rename",
         onClick: () => setRenamingGroup(groupId),

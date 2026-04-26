@@ -18,7 +18,9 @@ function basename(path: string): string {
 
 type SidebarProps = {
   onOpenSettings: () => void;
-  onAddProject: () => void;
+  /** Groups can pre-select themselves in the add-project flow by passing
+   * their id; the `+` button passes nothing for "no group". */
+  onAddProject: (groupId?: string | null) => void;
 };
 
 export function Sidebar({ onOpenSettings, onAddProject }: SidebarProps) {
@@ -139,14 +141,14 @@ export function Sidebar({ onOpenSettings, onAddProject }: SidebarProps) {
             className="sidebar__icon-btn"
             aria-label="Add project"
             title="Add project"
-            onClick={onAddProject}
+            onClick={() => onAddProject()}
           >
             +
           </button>
         </div>
       </div>
       <div className="sidebar__list">
-        <ProjectList />
+        <ProjectList onAddProject={onAddProject} />
       </div>
       <div
         className={`sidebar__grip ${dragging ? "sidebar__grip--active" : ""}`}

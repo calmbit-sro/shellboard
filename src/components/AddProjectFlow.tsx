@@ -13,6 +13,9 @@ function basename(path: string): string {
 type AddProjectFlowProps = {
   open: boolean;
   onClose: () => void;
+  /** Pre-select a group when the flow is opened from a group's context
+   * menu. The user can still change the group in the form. */
+  initialGroupId?: string | null;
 };
 
 type Draft = {
@@ -22,7 +25,11 @@ type Draft = {
   groupId: string | null;
 };
 
-export function AddProjectFlow({ open, onClose }: AddProjectFlowProps) {
+export function AddProjectFlow({
+  open,
+  onClose,
+  initialGroupId = null,
+}: AddProjectFlowProps) {
   const addProject = useAppStore((s) => s.addProject);
   const groups = useAppStore((s) => s.groups);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -51,7 +58,7 @@ export function AddProjectFlow({ open, onClose }: AddProjectFlowProps) {
           path: picked,
           name: basename(picked),
           color: randomProjectColor(),
-          groupId: null,
+          groupId: initialGroupId,
         });
       } finally {
         pickerActive.current = false;
