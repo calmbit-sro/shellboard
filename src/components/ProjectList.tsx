@@ -25,6 +25,12 @@ import { Modal } from "./Modal";
 import { ColorPicker } from "./ColorPicker";
 import { SnippetsDialog } from "./SnippetsDialog";
 
+function basename(path: string): string {
+  const norm = path.replace(/[\\/]+$/, "");
+  const parts = norm.split(/[\\/]/);
+  return parts[parts.length - 1] || path;
+}
+
 type ProjectCtxState = {
   kind: "project";
   x: number;
@@ -47,7 +53,12 @@ export function ProjectList({ onAddProject }: ProjectListProps) {
   const projects = useAppStore((s) => s.projects);
   const groups = useAppStore((s) => s.groups);
   const activeProjectId = useAppStore((s) => s.activeProjectId);
+  const activeTabId = useAppStore((s) => s.activeTabId);
   const tabs = useAppStore((s) => s.tabs);
+  const terminals = useAppStore((s) => s.terminals);
+  const lastActiveTabByProject = useAppStore(
+    (s) => s.lastActiveTabByProject,
+  );
   const openProject = useAppStore((s) => s.openProject);
   const updateProject = useAppStore((s) => s.updateProject);
   const removeProject = useAppStore((s) => s.removeProject);
@@ -93,10 +104,15 @@ export function ProjectList({ onAddProject }: ProjectListProps) {
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
   );
 
-  const ungrouped = projects.filter((p) => p.groupId === null);
+  // Quick-add (autoCwdName) projects always render at the very bottom in
+  // their own section, regardless of groupId. They're ephemeral and
+  // shouldn't mix with the user's curated layout.
+  const autoCwdProjects = projects.filter((p) => p.autoCwdName);
+  const regularProjects = projects.filter((p) => !p.autoCwdName);
+  const ungrouped = regularProjects.filter((p) => p.groupId === null);
   const projectsByGroup = new Map<string, Project[]>();
   for (const g of groups) projectsByGroup.set(g.id, []);
-  for (const p of projects) {
+  for (const p of regularProjects) {
     if (p.groupId && projectsByGroup.has(p.groupId)) {
       projectsByGroup.get(p.groupId)!.push(p);
     }
@@ -133,8 +149,13 @@ export function ProjectList({ onAddProject }: ProjectListProps) {
       },
     ];
     // Move-to-group entries (inline list). Hide options that equal the
-    // project's current group so the menu doesn't offer a no-op.
-    if (groups.length > 0 || project.groupId !== null) {
+    // project's current group so the menu doesn't offer a no-op. Skip
+    // entirely for quick-add projects — they're pinned to their own
+    // bottom section.
+    if (
+      !project.autoCwdName &&
+      (groups.length > 0 || project.groupId !== null)
+    ) {
       if (project.groupId !== null) {
         items.push({
           label: "Move to: No group",
@@ -285,6 +306,11 @@ export function ProjectList({ onAddProject }: ProjectListProps) {
 
     // Project dropped onto a group header: move project to that group.
     if (!activeIsGroup && overIsGroup) {
+      const activeProject = projects.find((p) => p.id === activeId);
+      // Quick-add projects live in the bottom section by definition;
+      // refuse to file them under a regular group so the section stays
+      // coherent.
+      if (activeProject?.autoCwdName) return;
       void moveProjectToGroup(activeId, overId.slice(6));
       return;
     }
@@ -294,6 +320,14 @@ export function ProjectList({ onAddProject }: ProjectListProps) {
       const activeProject = projects.find((p) => p.id === activeId);
       const overProject = projects.find((p) => p.id === overId);
       if (!activeProject || !overProject) return;
+      // Don't let a quick-add project sneak into a regular project's
+      // group (or vice versa) via cross-section drag.
+      if (
+        Boolean(activeProject.autoCwdName) !==
+        Boolean(overProject.autoCwdName)
+      ) {
+        return;
+      }
       if (activeProject.groupId !== overProject.groupId) {
         // Cross-group: reassign to the target's group. We don't try to
         // position precisely inside the target group — within-group order
@@ -305,6 +339,20 @@ export function ProjectList({ onAddProject }: ProjectListProps) {
     }
   }
 
+  function projectDisplayName(p: Project): string {
+    if (!p.autoCwdName) return p.name;
+    // For the active project use the active tab; for inactive ones fall
+    // back to the most recently active tab in that project. The cwd we
+    // care about is the focused panel's, not the tab's "default" cwd.
+    const tabId =
+      activeProjectId === p.id ? activeTabId : lastActiveTabByProject[p.id];
+    const tab = tabId ? tabs.find((t) => t.id === tabId) : undefined;
+    const leafId = tab?.focusedLeafId ?? null;
+    const cwd = leafId ? terminals[leafId]?.cwd : undefined;
+    if (!cwd) return p.name;
+    return `../${basename(cwd)}`;
+  }
+
   function renderProjectRow(p: Project) {
     const hasActivity = tabs.some(
       (t) => t.projectId === p.id && t.hasUnread,
@@ -313,6 +361,7 @@ export function ProjectList({ onAddProject }: ProjectListProps) {
       <ProjectRow
         key={p.id}
         project={p}
+        displayName={projectDisplayName(p)}
         editing={renamingId === p.id}
         active={activeProjectId === p.id}
         hasActivity={hasActivity}
@@ -397,6 +446,18 @@ export function ProjectList({ onAddProject }: ProjectListProps) {
               );
             })}
           </SortableContext>
+
+          {autoCwdProjects.length > 0 && (
+            <>
+              <div className="project-list__separator" aria-hidden />
+              <SortableContext
+                items={autoCwdProjects.map((p) => p.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                {autoCwdProjects.map(renderProjectRow)}
+              </SortableContext>
+            </>
+          )}
 
           <DragOverlay dropAnimation={null}>
             {renderDragOverlay(activeDragId, projects, groups)}

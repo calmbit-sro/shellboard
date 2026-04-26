@@ -5,6 +5,9 @@ import type { Project } from "../store/appStore";
 
 type ProjectRowProps = {
   project: Project;
+  /** What to render in the row. Usually `project.name`, but for projects
+   * with `autoCwdName` it tracks the active panel's cwd. */
+  displayName: string;
   editing: boolean;
   active: boolean;
   hasActivity: boolean;
@@ -16,6 +19,7 @@ type ProjectRowProps = {
 
 export function ProjectRow({
   project,
+  displayName,
   editing,
   active,
   hasActivity,
@@ -106,7 +110,7 @@ export function ProjectRow({
         />
       ) : (
         <>
-          <span className="project-row__name">{project.name}</span>
+          <span className="project-row__name">{displayName}</span>
           {hasActivity && (
             <span className="project-row__activity" aria-label="Activity" />
           )}

@@ -26,12 +26,20 @@ import {
 } from "./utils/persistence";
 import { findTheme } from "./utils/themes";
 import { getTerminal } from "./utils/terminalRegistry";
+import { firstLeafOf } from "./utils/mosaic";
+import { randomProjectColor } from "./components/ColorPicker";
 import { DEFAULT_SETTINGS, SETTINGS_LIMITS } from "./store/appStore";
 import "./App.css";
 
 const IS_MAC =
   typeof navigator !== "undefined" &&
   /Mac|iPhone|iPad/.test(navigator.platform);
+
+function basename(path: string): string {
+  const norm = path.replace(/[\\/]+$/, "");
+  const parts = norm.split(/[\\/]/);
+  return parts[parts.length - 1] || path;
+}
 
 function isEditable(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -240,6 +248,30 @@ function App() {
       if ((e.key === "t" || e.key === "T") && !e.shiftKey && !e.altKey) {
         e.preventDefault();
         void store.addTab();
+        return;
+      }
+
+      // Cmd/Ctrl+N — quick-add the focused terminal's cwd as an
+      // ungrouped project. Name uses `../<basename>` as a visual hint
+      // that it's a quickly-spawned project pinned from inside another.
+      if ((e.key === "n" || e.key === "N") && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        const tab = store.tabs.find((t) => t.id === store.activeTabId);
+        const leafId =
+          tab?.focusedLeafId ??
+          (tab?.mosaic ? firstLeafOf(tab.mosaic) : null);
+        const cwd = leafId ? store.terminals[leafId]?.cwd : undefined;
+        if (cwd) {
+          void (async () => {
+            const project = await store.addProject({
+              path: cwd,
+              name: `../${basename(cwd)}`,
+              color: randomProjectColor(),
+              autoCwdName: true,
+            });
+            await store.openProject(project.id);
+          })();
+        }
         return;
       }
 

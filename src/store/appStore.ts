@@ -65,6 +65,11 @@ export type Project = {
   groupId: string | null;
   /** Optional per-project command palette; not present on older configs. */
   snippets?: Snippet[];
+  /** When true, the sidebar caption tracks the active tab's focused-leaf
+   * cwd as `../<basename>` instead of using `name`. Set automatically
+   * for projects created via the Cmd/Ctrl+N quick-add shortcut, and
+   * cleared as soon as the user renames the project manually. */
+  autoCwdName?: boolean;
 };
 
 export type ProjectGroup = {
@@ -513,12 +518,19 @@ export const useAppStore = create<AppState>((set, get) => ({
       lastActiveTabByProject: nextLastActive,
     });
 
-    // Never leave the active project's group empty — reopen a shell in it.
-    if (
-      siblingsInProject.length === 0 &&
-      tab.projectId === activeProjectId
-    ) {
-      await get().addTab({ projectId: tab.projectId });
+    // Two cases when the project just lost its last tab:
+    //   - autoCwdName ("quick-add") projects are ephemeral — when the
+    //     user closes the last tab the whole project disappears.
+    //   - Regular projects: never leave the active one with zero tabs,
+    //     so we respawn a shell. Inactive ones are left empty (the user
+    //     opens a new tab themselves on next switch).
+    if (siblingsInProject.length === 0) {
+      const project = get().projects.find((p) => p.id === tab.projectId);
+      if (project?.autoCwdName) {
+        await get().removeProject(tab.projectId);
+      } else if (tab.projectId === activeProjectId) {
+        await get().addTab({ projectId: tab.projectId });
+      }
     }
   },
 
@@ -837,8 +849,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateProject: async (id, patch) => {
+    // Manual rename pins the name: clear autoCwdName so the sidebar
+    // stops tracking the active tab's cwd. Caller can still set
+    // autoCwdName explicitly in patch to override.
+    const effectivePatch =
+      patch.name !== undefined && patch.autoCwdName === undefined
+        ? { ...patch, autoCwdName: false }
+        : patch;
     const projects = get().projects.map((p) =>
-      p.id === id ? { ...p, ...patch } : p,
+      p.id === id ? { ...p, ...effectivePatch } : p,
     );
     let tabs = get().tabs;
     if (patch.name !== undefined) {

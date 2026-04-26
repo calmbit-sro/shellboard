@@ -98,6 +98,12 @@
   gap: 4px;
 }
 
+.project-list__separator {
+  height: 1px;
+  margin: 4px 12px;
+  background: var(--theme-border, rgba(255, 255, 255, 0.12));
+}
+
 .group-header {
   display: flex;
   align-items: center;

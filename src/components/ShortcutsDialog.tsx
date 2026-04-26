@@ -49,6 +49,7 @@ const GROUPS: Group[] = [
   {
     heading: "App",
     items: [
+      [`${MOD}N`, "Quick-add project from current cwd"],
       [`${MOD}B`, "Toggle sidebar"],
       [`${MOD},`, "Settings"],
       [`${MOD}${SHIFT}P`, "Command palette"],
