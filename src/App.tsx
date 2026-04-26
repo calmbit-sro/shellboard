@@ -29,6 +29,7 @@ import { getTerminal } from "./utils/terminalRegistry";
 import { firstLeafOf } from "./utils/mosaic";
 import { randomProjectColor } from "./components/ColorPicker";
 import { cwdLabel } from "./utils/path";
+import { checkForUpdate } from "./utils/updateCheck";
 import { DEFAULT_SETTINGS, SETTINGS_LIMITS } from "./store/appStore";
 import "./App.css";
 
@@ -197,6 +198,23 @@ function App() {
         enableSessionAutosave();
       }
     })();
+  }, []);
+
+  // Update check — fires once per launch, ~5s after boot, only when the
+  // user opted in. Result lands in the store; StatusBar reads it.
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      const s = useAppStore.getState();
+      if (!s.settings.checkForUpdatesOnStartup) return;
+      void checkForUpdate()
+        .then((info) => {
+          if (info) useAppStore.getState().setUpdateInfo(info);
+        })
+        .catch(() => {
+          /* network or parse failure — silent */
+        });
+    }, 5000);
+    return () => clearTimeout(handle);
   }, []);
 
   useEffect(() => {

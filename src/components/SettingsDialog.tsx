@@ -222,6 +222,25 @@ export function SettingsDialog({
               Affects newly-spawned terminals only.
             </p>
           </div>
+
+          <div className="settings__field settings__field--check">
+            <label className="settings__check">
+              <input
+                type="checkbox"
+                checked={settings.checkForUpdatesOnStartup}
+                onChange={(e) =>
+                  void updateSettings({
+                    checkForUpdatesOnStartup: e.target.checked,
+                  })
+                }
+              />
+              <span>Check for updates on startup</span>
+            </label>
+            <p className="settings__hint">
+              Pings GitHub Releases at most once per day. When a newer
+              version exists, a clickable badge appears in the status bar.
+            </p>
+          </div>
         </section>
 
         <section className="settings__section">

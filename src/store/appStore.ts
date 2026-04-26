@@ -94,6 +94,9 @@ export type Settings = {
   shellPath: string;
   /** Empty string = auto (-l for known POSIX shells); otherwise space-separated. */
   shellArgs: string;
+  /** Hit GitHub Releases on startup to surface a newer version in the
+   * status bar. Off = no network calls. */
+  checkForUpdatesOnStartup: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -106,6 +109,7 @@ export const DEFAULT_SETTINGS: Settings = {
   scrollback: 5000,
   shellPath: "",
   shellArgs: "",
+  checkForUpdatesOnStartup: true,
 };
 
 export const SETTINGS_LIMITS = {
@@ -142,6 +146,14 @@ type AppState = {
    * restore. A Terminal consumes (and removes) its entry on mount so old
    * buffer content lands in the fresh xterm before PTY data flows in. */
   restoredBuffers: Record<string, string>;
+  /** Filled by the startup update check; null = no update available
+   * (or check disabled / not yet run). Status bar reads this. */
+  updateInfo: {
+    current: string;
+    latest: string;
+    url: string;
+    notes: string;
+  } | null;
 
   hydrate: (data: {
     projects?: Project[];
@@ -160,6 +172,7 @@ type AppState = {
   requestGroupRename: (groupId: string | null) => void;
   setSearchingTerminal: (terminalId: string | null) => void;
   consumeRestoredBuffer: (terminalId: string) => string | null;
+  setUpdateInfo: (info: AppState["updateInfo"]) => void;
 
   addGroup: (name: string) => Promise<ProjectGroup>;
   renameGroup: (id: string, name: string) => Promise<void>;
@@ -295,6 +308,10 @@ function clampSettings(s: Partial<Settings>): Settings {
       typeof s.shellPath === "string" ? s.shellPath.trim() : "",
     shellArgs:
       typeof s.shellArgs === "string" ? s.shellArgs.trim() : "",
+    checkForUpdatesOnStartup:
+      typeof s.checkForUpdatesOnStartup === "boolean"
+        ? s.checkForUpdatesOnStartup
+        : DEFAULT_SETTINGS.checkForUpdatesOnStartup,
   };
 }
 
@@ -350,6 +367,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   renamingGroupId: null,
   searchingTerminalId: null,
   restoredBuffers: {},
+  updateInfo: null,
 
   hydrate: (data) =>
     set((state) => {
@@ -405,6 +423,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   requestGroupRename: (groupId) => set({ renamingGroupId: groupId }),
   setSearchingTerminal: (terminalId) =>
     set({ searchingTerminalId: terminalId }),
+
+  setUpdateInfo: (info) => set({ updateInfo: info }),
 
   consumeRestoredBuffer: (terminalId) => {
     // Non-destructive: React StrictMode double-mounts Terminal components

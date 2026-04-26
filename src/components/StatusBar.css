@@ -88,6 +88,34 @@
   background: rgba(10, 132, 255, 0.15);
 }
 
+.status-bar__update {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(10, 132, 255, 0.18);
+  color: #b0d4ff;
+  border: 1px solid rgba(10, 132, 255, 0.6);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0.3px;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+
+.status-bar__update:hover {
+  background: rgba(10, 132, 255, 0.32);
+  color: #ffffff;
+}
+
+/* Update badge already takes the auto-push to the right; cancel the
+ * help button's own margin-left:auto so the two sit next to each other
+ * instead of getting half the gap each. */
+.status-bar__update + .status-bar__help {
+  margin-left: 6px;
+}
+
 .status-bar__version {
   font-family: "Menlo", Consolas, monospace;
   font-size: 10px;

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useAppStore } from "../store/appStore";
 import "./StatusBar.css";
 
@@ -19,6 +20,7 @@ export function StatusBar({ onOpenShortcuts }: StatusBarProps) {
   const activeTabId = useAppStore((s) => s.activeTabId);
   const tabs = useAppStore((s) => s.tabs);
   const terminals = useAppStore((s) => s.terminals);
+  const updateInfo = useAppStore((s) => s.updateInfo);
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const focusedLeaf = activeTab?.focusedLeafId ?? null;
@@ -156,6 +158,19 @@ export function StatusBar({ onOpenShortcuts }: StatusBarProps) {
             </>
           )}
         </>
+      )}
+      {updateInfo && (
+        <button
+          type="button"
+          className="status-bar__update"
+          title={`Update available: v${updateInfo.latest} (you're on v${updateInfo.current}). Click to open the release page.`}
+          aria-label={`Download Shellboard v${updateInfo.latest}`}
+          onClick={() => {
+            void openUrl(updateInfo.url).catch(() => {});
+          }}
+        >
+          ↑ v{updateInfo.latest}
+        </button>
       )}
       <button
         type="button"
