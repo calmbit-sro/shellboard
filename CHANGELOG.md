@@ -5,6 +5,36 @@ All notable changes to Shellboard will be documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] — 2026-04-26
+
+### Added
+
+- **Quick-add projects (`Cmd/Ctrl+N`).** Spawn an ephemeral project
+  pinned to the focused terminal's cwd — random color, no group,
+  caption tracks the active panel's directory live. Closing the last
+  tab removes the project. Quick-add projects render in their own
+  bottom section of the sidebar, separated from your curated layout
+  by a thin divider; you can reorder them but not file them under a
+  regular group.
+- **"Add project here" in group context menu.** Right-click a group
+  header to open the add-project flow with that group preselected.
+- **cwd-aware captions.** Both the sidebar caption (for quick-add
+  projects) and tab captions now show `parent/basename` of the focused
+  panel's working directory and update live via OSC 7. Manual rename
+  pins the name. Long paths truncate from the *left* (`…ents/prod-iofcz`)
+  so the basename — the part you actually need — stays visible.
+- **Update check on startup.** Pings GitHub Releases at most once per
+  day; when a newer version exists, a clickable badge appears in the
+  status bar that opens the release page in your system browser.
+  Toggle in *Settings → Check for updates on startup* (default on).
+
+### Changed
+
+- Tab title and project caption rendering switched to a shared
+  `cwdLabel()` helper, replacing the earlier mix of `../<basename>`
+  and bare `<basename>`. Stored project names from older sessions are
+  honored as-is until you rename them.
+
 ## [1.1.0] — 2026-04-24
 
 ### Added
