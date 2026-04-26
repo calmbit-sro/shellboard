@@ -118,6 +118,22 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
     };
     container.addEventListener("mouseup", onMouseUp);
 
+    // Middle-click paste (X11 convention). Tauri can't read the X11 primary
+    // selection, but since copy-on-select keeps the latest selection in the
+    // regular clipboard, reading from there gives the same effect.
+    // preventDefault on mousedown blocks the browser's autoscroll/middle-
+    // button gesture on Windows/Linux.
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 1) return;
+      e.preventDefault();
+      void readClipboard()
+        .then((text) => {
+          if (text) xterm.paste(text);
+        })
+        .catch(() => {});
+    };
+    container.addEventListener("mousedown", onMouseDown);
+
     // Copy/paste convention:
     //   macOS:    Cmd+C (smart — copy if selection, else no-op), Cmd+V paste
     //   Linux/Win: Ctrl+Shift+C copy, Ctrl+Shift+V paste
@@ -287,6 +303,7 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
       if (fitRaf !== null) cancelAnimationFrame(fitRaf);
       if (resizeTimer) clearTimeout(resizeTimer);
       container.removeEventListener("mouseup", onMouseUp);
+      container.removeEventListener("mousedown", onMouseDown);
       for (const d of disposables) d.dispose();
       for (const off of unlisteners) off();
       unregisterTerminal(terminalId);
