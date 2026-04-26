@@ -5,6 +5,15 @@ All notable changes to Shellboard will be documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] — 2026-04-26
+
+### Added
+
+- **Middle-click paste.** Clicking the middle mouse button inside a
+  terminal pastes the clipboard contents, matching the X11 convention.
+  Combined with copy-on-select, this gives the classic "select to copy,
+  middle-click to paste" workflow on every platform.
+
 ## [1.2.0] — 2026-04-26
 
 ### Added
