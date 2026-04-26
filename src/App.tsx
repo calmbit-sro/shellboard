@@ -28,6 +28,7 @@ import { findTheme } from "./utils/themes";
 import { getTerminal } from "./utils/terminalRegistry";
 import { firstLeafOf } from "./utils/mosaic";
 import { randomProjectColor } from "./components/ColorPicker";
+import { cwdLabel } from "./utils/path";
 import { DEFAULT_SETTINGS, SETTINGS_LIMITS } from "./store/appStore";
 import "./App.css";
 
@@ -35,11 +36,6 @@ const IS_MAC =
   typeof navigator !== "undefined" &&
   /Mac|iPhone|iPad/.test(navigator.platform);
 
-function basename(path: string): string {
-  const norm = path.replace(/[\\/]+$/, "");
-  const parts = norm.split(/[\\/]/);
-  return parts[parts.length - 1] || path;
-}
 
 function isEditable(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -252,8 +248,8 @@ function App() {
       }
 
       // Cmd/Ctrl+N — quick-add the focused terminal's cwd as an
-      // ungrouped project. Name uses `../<basename>` as a visual hint
-      // that it's a quickly-spawned project pinned from inside another.
+      // ungrouped project. Caption shows `parent/basename` and tracks
+      // the active panel's cwd via OSC 7.
       if ((e.key === "n" || e.key === "N") && !e.shiftKey && !e.altKey) {
         e.preventDefault();
         const tab = store.tabs.find((t) => t.id === store.activeTabId);
@@ -265,7 +261,7 @@ function App() {
           void (async () => {
             const project = await store.addProject({
               path: cwd,
-              name: `../${basename(cwd)}`,
+              name: cwdLabel(cwd),
               color: randomProjectColor(),
               autoCwdName: true,
             });

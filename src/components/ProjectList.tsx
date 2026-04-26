@@ -24,12 +24,7 @@ import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { Modal } from "./Modal";
 import { ColorPicker } from "./ColorPicker";
 import { SnippetsDialog } from "./SnippetsDialog";
-
-function basename(path: string): string {
-  const norm = path.replace(/[\\/]+$/, "");
-  const parts = norm.split(/[\\/]/);
-  return parts[parts.length - 1] || path;
-}
+import { cwdLabel } from "../utils/path";
 
 type ProjectCtxState = {
   kind: "project";
@@ -350,7 +345,7 @@ export function ProjectList({ onAddProject }: ProjectListProps) {
     const leafId = tab?.focusedLeafId ?? null;
     const cwd = leafId ? terminals[leafId]?.cwd : undefined;
     if (!cwd) return p.name;
-    return `../${basename(cwd)}`;
+    return cwdLabel(cwd);
   }
 
   function renderProjectRow(p: Project) {

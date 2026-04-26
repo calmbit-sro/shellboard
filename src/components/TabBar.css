@@ -70,6 +70,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* Truncate from the left so the basename (most informative) stays
+   * visible: `…ents/prod-iofcz` instead of `vikuna-deployments/prod…`.
+   * direction: rtl moves the ellipsis to the left edge; text-align: left
+   * keeps the layout flush-left so short titles still sit naturally. */
+  direction: rtl;
+  text-align: left;
 }
 
 .tab__input {

@@ -229,6 +229,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* Left-side truncation so `…ents/prod-iofcz` is visible instead of
+   * `vikuna-deployments/prod…` — the part you actually need is at the
+   * end of the cwd label. */
+  direction: rtl;
+  text-align: left;
 }
 
 .project-row__input {

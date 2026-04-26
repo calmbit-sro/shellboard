@@ -17,10 +17,12 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { useAppStore, type Tab } from "../store/appStore";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
+import { cwdLabel } from "../utils/path";
 import "./TabBar.css";
 
 export function TabBar() {
   const tabs = useAppStore((s) => s.tabs);
+  const terminals = useAppStore((s) => s.terminals);
   const activeTabId = useAppStore((s) => s.activeTabId);
   const activeProjectId = useAppStore((s) => s.activeProjectId);
   const projects = useAppStore((s) => s.projects);
@@ -71,6 +73,14 @@ export function TabBar() {
   const draggedTab = activeDragId
     ? groupTabs.find((t) => t.id === activeDragId)
     : null;
+
+  function tabDisplayTitle(tab: Tab): string {
+    if (tab.customTitle) return tab.title;
+    const leafId = tab.focusedLeafId;
+    const cwd = leafId ? terminals[leafId]?.cwd : undefined;
+    if (!cwd) return tab.title;
+    return cwdLabel(cwd);
+  }
 
   function buildTabMenu(tabId: string): MenuItem[] {
     const tab = groupTabs.find((t) => t.id === tabId);
@@ -129,6 +139,7 @@ export function TabBar() {
             <SortableTab
               key={tab.id}
               tab={tab}
+              displayTitle={tabDisplayTitle(tab)}
               isActive={tab.id === activeTabId}
               isEditing={editingId === tab.id}
               onActivate={() => setActiveTab(tab.id)}
@@ -156,7 +167,9 @@ export function TabBar() {
         </button>
       </div>
       <DragOverlay dropAnimation={null}>
-        {draggedTab ? <TabClone tab={draggedTab} /> : null}
+        {draggedTab ? (
+          <TabClone displayTitle={tabDisplayTitle(draggedTab)} />
+        ) : null}
       </DragOverlay>
       {ctx && (
         <ContextMenu
@@ -172,6 +185,9 @@ export function TabBar() {
 
 type SortableTabProps = {
   tab: Tab;
+  /** Computed caption — basename(focused panel cwd) for non-custom tabs,
+   * tab.title otherwise. */
+  displayTitle: string;
   isActive: boolean;
   isEditing: boolean;
   onActivate: () => void;
@@ -184,6 +200,7 @@ type SortableTabProps = {
 
 function SortableTab({
   tab,
+  displayTitle,
   isActive,
   isEditing,
   onActivate,
@@ -235,7 +252,7 @@ function SortableTab({
     >
       {isEditing ? (
         <TabTitleEditor
-          initial={tab.title}
+          initial={displayTitle}
           onCommit={onCommitRename}
           onCancel={onCancelEdit}
         />
@@ -253,15 +270,15 @@ function SortableTab({
               ⚡
             </span>
           )}
-          <span className="tab__title" title={tab.title}>
-            {tab.title}
+          <span className="tab__title" title={displayTitle}>
+            {displayTitle}
           </span>
         </>
       )}
       <button
         type="button"
         className="tab__close"
-        aria-label={`Close ${tab.title}`}
+        aria-label={`Close ${displayTitle}`}
         onClick={(e) => {
           e.stopPropagation();
           onClose();
@@ -274,10 +291,10 @@ function SortableTab({
   );
 }
 
-function TabClone({ tab }: { tab: Tab }) {
+function TabClone({ displayTitle }: { displayTitle: string }) {
   return (
     <div className="tab tab--active" style={{ cursor: "grabbing" }}>
-      <span className="tab__title">{tab.title}</span>
+      <span className="tab__title">{displayTitle}</span>
       <span className="tab__close" aria-hidden>
         ×
       </span>
