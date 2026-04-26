@@ -6,6 +6,9 @@ A per-project tab & split workspace with session restore, themes, a command pale
 
 See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
+
+![Shellboard sidebar with project groups, splits, and the command palette open](docs/screenshots/main.png)
+
 ## Features
 
 - **Projects** — add folders as named, colored projects with drag-and-drop reorder. Each project owns its own tab group.
