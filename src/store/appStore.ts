@@ -21,8 +21,10 @@ import {
 } from "../utils/persistence";
 import {
   buildMosaicFromLayout,
+  collectLeafBufferIds,
   serializeSession,
   type PersistedSession,
+  type PersistedTab,
 } from "../utils/sessionSerialize";
 import { flushAllWrites } from "../utils/terminalRegistry";
 import { DEFAULT_THEME_ID, findTheme } from "../utils/themes";
@@ -151,6 +153,16 @@ type AppState = {
    * restore. A Terminal consumes (and removes) its entry on mount so old
    * buffer content lands in the fresh xterm before PTY data flows in. */
   restoredBuffers: Record<string, string>;
+  /** Lazy-load: persisted tabs of projects that haven't been activated
+   * since startup. Spawned only when the user picks the project in the
+   * sidebar. Drained per project; what's still in here at session save
+   * time gets merged back into session.json so unactivated projects
+   * don't lose their layout across launches. */
+  pendingProjectRestores: Record<string, PersistedTab[]>;
+  /** bufferId → snapshot, for buffers referenced by pendingProjectRestores
+   * tabs. Lookup happens during the lazy spawn; entries are dropped as
+   * their owning project is drained. */
+  pendingBuffers: Record<string, string>;
   /** Filled by the startup update check; null = no update available
    * (or check disabled / not yet run). Status bar reads this. */
   updateInfo: {
@@ -376,6 +388,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   renamingGroupId: null,
   searchingTerminalId: null,
   restoredBuffers: {},
+  pendingProjectRestores: {},
+  pendingBuffers: {},
   updateInfo: null,
 
   hydrate: (data) =>
@@ -931,11 +945,27 @@ export const useAppStore = create<AppState>((set, get) => ({
     const nextLastActive = { ...get().lastActiveTabByProject };
     delete nextLastActive[id];
 
+    // Drop any pending lazy-restore entries (and their buffers) for the
+    // removed project so they don't haunt the next session save.
+    const nextPendingProjects = { ...get().pendingProjectRestores };
+    const removedPending = nextPendingProjects[id];
+    delete nextPendingProjects[id];
+    const nextPendingBuffers = { ...get().pendingBuffers };
+    if (removedPending) {
+      for (const ptab of removedPending) {
+        for (const bufferId of collectLeafBufferIds(ptab.layout)) {
+          delete nextPendingBuffers[bufferId];
+        }
+      }
+    }
+
     set({
       projects: remainingProjects,
       tabs: remainingTabs,
       terminals: remainingTerminals,
       lastActiveTabByProject: nextLastActive,
+      pendingProjectRestores: nextPendingProjects,
+      pendingBuffers: nextPendingBuffers,
     });
 
     await saveProjects(remainingProjects);
@@ -1078,6 +1108,87 @@ export const useAppStore = create<AppState>((set, get) => ({
   setActiveProject: async (projectId) => {
     const project = get().projects.find((p) => p.id === projectId);
     if (!project) return;
+
+    // Lazy restore: if this project's tabs were stashed at startup
+    // instead of being spawned eagerly, spawn them now. Eagerly clear the
+    // pending entry first so a concurrent activation can't double-spawn.
+    const pending = get().pendingProjectRestores[projectId];
+    if (pending && pending.length > 0) {
+      set((state) => {
+        const next = { ...state.pendingProjectRestores };
+        delete next[projectId];
+        return { pendingProjectRestores: next };
+      });
+
+      const buffers = get().pendingBuffers;
+      const newTabs: Tab[] = [];
+      const newTerminals: Record<string, TerminalSession> = {};
+      const restoredBuffers: Record<string, string> = {};
+      const consumedBufferIds = new Set<string>();
+
+      for (const ptab of pending) {
+        for (const id of collectLeafBufferIds(ptab.layout)) {
+          consumedBufferIds.add(id);
+        }
+        const mosaic = await buildMosaicFromLayout(
+          ptab.layout,
+          buffers,
+          async (cwd, buffer) => {
+            const effectiveCwd = cwd || project.path;
+            const s = get().settings;
+            let terminalId: string;
+            try {
+              terminalId = await spawnTerminal(
+                effectiveCwd,
+                s.autoCwdTracking,
+                s.shellPath,
+                s.shellArgs,
+              );
+              newTerminals[terminalId] = {
+                id: terminalId,
+                cwd: effectiveCwd,
+              };
+            } catch {
+              terminalId = await spawnTerminal(
+                project.path,
+                s.autoCwdTracking,
+                s.shellPath,
+                s.shellArgs,
+              );
+              newTerminals[terminalId] = {
+                id: terminalId,
+                cwd: project.path,
+              };
+            }
+            if (buffer) restoredBuffers[terminalId] = buffer;
+            return terminalId;
+          },
+        );
+
+        newTabs.push({
+          id: ptab.id,
+          title: ptab.title,
+          customTitle: ptab.customTitle,
+          mosaic,
+          focusedLeafId: firstLeafOf(mosaic),
+          projectId,
+          hasUnread: false,
+          broadcastInput: false,
+        });
+      }
+
+      set((state) => {
+        const nextPendingBuffers = { ...state.pendingBuffers };
+        for (const id of consumedBufferIds) delete nextPendingBuffers[id];
+        return {
+          tabs: [...state.tabs, ...newTabs],
+          terminals: { ...state.terminals, ...newTerminals },
+          restoredBuffers: { ...state.restoredBuffers, ...restoredBuffers },
+          pendingBuffers: nextPendingBuffers,
+        };
+      });
+    }
+
     set({ activeProjectId: projectId });
 
     const groupTabs = get().tabs.filter((t) => t.projectId === projectId);
@@ -1126,85 +1237,39 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { projects } = get();
     const projectIds = new Set(projects.map((p) => p.id));
 
-    // Collect: tabs per project + fresh terminal records keyed by new UUID.
-    const newTabs: Tab[] = [];
-    const newTerminals: Record<string, TerminalSession> = {};
-    const restoredBuffers: Record<string, string> = {};
-
-    for (const [projectId, persistedTabs] of Object.entries(
-      session.tabsByProject,
-    )) {
-      if (!projectIds.has(projectId)) continue;
-      const project = projects.find((p) => p.id === projectId)!;
-
-      for (const ptab of persistedTabs) {
-        const mosaic = await buildMosaicFromLayout(
-          ptab.layout,
-          buffers,
-          async (cwd, buffer) => {
-            // Fall back to project.path if the saved cwd no longer exists —
-            // spawn_pty itself fails only on truly bogus paths, but we
-            // can't cheaply probe so we just rely on its error. If it does
-            // error, spawn again with project.path.
-            const effectiveCwd = cwd || project.path;
-            const s = get().settings;
-            let terminalId: string;
-            try {
-              terminalId = await spawnTerminal(
-                effectiveCwd,
-                s.autoCwdTracking,
-                s.shellPath,
-                s.shellArgs,
-              );
-              newTerminals[terminalId] = { id: terminalId, cwd: effectiveCwd };
-            } catch {
-              terminalId = await spawnTerminal(
-                project.path,
-                s.autoCwdTracking,
-                s.shellPath,
-                s.shellArgs,
-              );
-              newTerminals[terminalId] = {
-                id: terminalId,
-                cwd: project.path,
-              };
-            }
-            if (buffer) restoredBuffers[terminalId] = buffer;
-            return terminalId;
-          },
-        );
-
-        newTabs.push({
-          id: ptab.id,
-          title: ptab.title,
-          customTitle: ptab.customTitle,
-          mosaic,
-          focusedLeafId: firstLeafOf(mosaic),
-          projectId,
-          hasUnread: false,
-          broadcastInput: false,
-        });
-      }
+    // Stash persisted layouts per project for lazy spawn. PTYs aren't
+    // spawned here — only when the user activates a project (or when
+    // setActiveProject is called below for the initial active project).
+    // Big startup wins when the user has many projects but only opens
+    // one or two per session.
+    const pending: Record<string, PersistedTab[]> = {};
+    const allTabIds = new Set<string>();
+    for (const [pid, ptabs] of Object.entries(session.tabsByProject)) {
+      if (!projectIds.has(pid)) continue;
+      pending[pid] = ptabs;
+      for (const t of ptabs) allTabIds.add(t.id);
     }
 
-    // Validate lastActiveTabByProject against the restored tabs.
-    const tabIds = new Set(newTabs.map((t) => t.id));
     const lastActive: Record<string, string> = {};
     for (const [pid, tid] of Object.entries(session.lastActiveTabByProject)) {
-      if (tabIds.has(tid)) lastActive[pid] = tid;
+      if (allTabIds.has(tid)) lastActive[pid] = tid;
     }
 
     set((state) => ({
-      tabs: [...state.tabs, ...newTabs],
-      terminals: { ...state.terminals, ...newTerminals },
+      pendingProjectRestores: {
+        ...state.pendingProjectRestores,
+        ...pending,
+      },
+      pendingBuffers: { ...state.pendingBuffers, ...buffers },
       lastActiveTabByProject: {
         ...state.lastActiveTabByProject,
         ...lastActive,
       },
-      restoredBuffers: { ...state.restoredBuffers, ...restoredBuffers },
     }));
 
-    // Restore active project + active tab within it, if still valid.
+    // Activate the saved active project — drains its pending entry
+    // and spawns its PTYs. Other projects stay pending until the user
+    // clicks them in the sidebar.
     if (
       session.activeProjectId &&
       projectIds.has(session.activeProjectId)
@@ -1280,6 +1345,26 @@ export async function flushSessionSave(): Promise<void> {
     lastActiveTabByProject: s.lastActiveTabByProject,
     projects: s.projects,
   });
+  // Merge pending lazy-restore state so projects the user hasn't
+  // activated this session don't lose their layout. Live state always
+  // wins over pending; only fill in projects with no live tabs.
+  for (const [pid, ptabs] of Object.entries(s.pendingProjectRestores)) {
+    if (!session.tabsByProject[pid]) {
+      session.tabsByProject[pid] = ptabs;
+    }
+  }
+  // Carry over pending buffers referenced by still-pending tabs so the
+  // next launch can replay them. Drop any orphans.
+  for (const ptabs of Object.values(s.pendingProjectRestores)) {
+    for (const ptab of ptabs) {
+      for (const id of collectLeafBufferIds(ptab.layout)) {
+        const buf = s.pendingBuffers[id];
+        if (buf !== undefined && buffers[id] === undefined) {
+          buffers[id] = buf;
+        }
+      }
+    }
+  }
   // Skip the buffers write when the user opted out of scrollback
   // persistence — buffers.json was already wiped at the toggle moment, so
   // we just stop overwriting it.

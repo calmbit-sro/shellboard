@@ -162,3 +162,11 @@ export function collectLeafCwds(layout: PersistedLayout): string[] {
     ...collectLeafCwds(layout.second),
   ];
 }
+
+export function collectLeafBufferIds(layout: PersistedLayout): string[] {
+  if (layout.type === "leaf") return layout.bufferId ? [layout.bufferId] : [];
+  return [
+    ...collectLeafBufferIds(layout.first),
+    ...collectLeafBufferIds(layout.second),
+  ];
+}
