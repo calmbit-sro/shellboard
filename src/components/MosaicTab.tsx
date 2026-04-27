@@ -18,6 +18,7 @@ export function MosaicTab({ tabId, isActiveTab }: MosaicTabProps) {
   const updateMosaic = useAppStore((s) => s.updateMosaic);
   const focusPanel = useAppStore((s) => s.focusPanel);
   const splitPanel = useAppStore((s) => s.splitPanel);
+  const closeActivePanel = useAppStore((s) => s.closeActivePanel);
 
   const [ctx, setCtx] = useState<CtxState | null>(null);
 
@@ -54,17 +55,24 @@ export function MosaicTab({ tabId, isActiveTab }: MosaicTabProps) {
   if (!tab || !tab.mosaic) return null;
 
   const menuItems: MenuItem[] = ctx
-    ? (
-        [
-          { label: "Split Left", side: "left" },
-          { label: "Split Right", side: "right" },
-          { label: "Split Up", side: "up" },
-          { label: "Split Down", side: "down" },
-        ] as const
-      ).map(({ label, side }) => ({
-        label,
-        onClick: () => void splitPanel(ctx.leafId, side as SplitSide),
-      }))
+    ? [
+        ...(
+          [
+            { label: "Split Left", side: "left" },
+            { label: "Split Right", side: "right" },
+            { label: "Split Up", side: "up" },
+            { label: "Split Down", side: "down" },
+          ] as const
+        ).map(({ label, side }) => ({
+          label,
+          onClick: () => void splitPanel(ctx.leafId, side as SplitSide),
+        })),
+        { separator: true } as const,
+        {
+          label: "Close Panel",
+          onClick: () => void closeActivePanel(),
+        },
+      ]
     : [];
 
   return (

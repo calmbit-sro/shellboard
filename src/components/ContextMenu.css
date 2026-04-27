@@ -34,3 +34,9 @@
   opacity: 0.45;
   cursor: default;
 }
+
+.context-menu__separator {
+  height: 1px;
+  margin: 4px 0;
+  background: #1a1a1a;
+}

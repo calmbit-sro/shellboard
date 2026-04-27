@@ -1,11 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import "./ContextMenu.css";
 
-export type MenuItem = {
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-};
+export type MenuItem =
+  | {
+      label: string;
+      onClick: () => void;
+      disabled?: boolean;
+      separator?: false;
+    }
+  | { separator: true };
 
 type ContextMenuProps = {
   x: number;
@@ -57,22 +60,26 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
       role="menu"
       onContextMenu={(e) => e.preventDefault()}
     >
-      {items.map((item, i) => (
-        <button
-          key={i}
-          type="button"
-          role="menuitem"
-          className="context-menu__item"
-          disabled={item.disabled}
-          onClick={() => {
-            if (item.disabled) return;
-            item.onClick();
-            onClose();
-          }}
-        >
-          {item.label}
-        </button>
-      ))}
+      {items.map((item, i) =>
+        "separator" in item && item.separator ? (
+          <div key={i} className="context-menu__separator" role="separator" />
+        ) : (
+          <button
+            key={i}
+            type="button"
+            role="menuitem"
+            className="context-menu__item"
+            disabled={item.disabled}
+            onClick={() => {
+              if (item.disabled) return;
+              item.onClick();
+              onClose();
+            }}
+          >
+            {item.label}
+          </button>
+        ),
+      )}
     </div>
   );
 }
