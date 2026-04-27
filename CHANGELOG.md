@@ -5,6 +5,44 @@ All notable changes to Shellboard will be documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] — 2026-04-27
+
+### Added
+
+- **Lazy project restore.** Startup no longer spawns PTYs for every
+  project up front — only the last-active project boots immediately;
+  others stash their persisted layout and spawn the moment you click
+  them in the sidebar. Big startup win when you have many projects but
+  typically work in one or two per session. Pending projects are merged
+  back into `session.json` at save time so they survive launches even
+  if you never open them.
+- **Persist scrollback toggle.** New *Settings → Persist scrollback
+  across restarts* lets you turn off `buffers.json` writes — restored
+  sessions then come back with empty terminals. Existing snapshots are
+  wiped when you flip the toggle off. Default is on (current behavior
+  preserved).
+- **Close panel from the panel context menu.** Right-click inside a
+  panel and pick *Close Panel* — same effect as `Cmd/Ctrl+W` on the
+  focused panel.
+
+### Fixed
+
+- **TUI app rendering after window resize.** Ink-based CLIs (Claude
+  Code et al.) left frame fragments behind when the window grew, only
+  cleaning up after a subsequent shrink. The 100 ms debounce on
+  `resize_pty` was leaving xterm and the PTY out of sync inside the
+  resize window — xterm rendered at the new size, but the TUI was
+  still drawing for the old PTY size. Resize now goes to the PTY per
+  frame; the upstream `ResizeObserver → RAF` chain already coalesces
+  drag callbacks to ~60 Hz, so a second debounce layer is unnecessary.
+- **PTY size drift after font change / tab activation.** Setting
+  `xterm.options = { fontFamily, fontSize }` recomputes cell metrics
+  but doesn't always fire `onResize` if cols/rows happen to land on
+  the same numbers. A new `fitAndSync` helper consolidates "fit + push
+  to PTY" into a single call, used after font changes, on tab
+  activation, and at mount, so the PTY can't drift out of sync with
+  what xterm displays.
+
 ## [1.2.1] — 2026-04-26
 
 ### Added
