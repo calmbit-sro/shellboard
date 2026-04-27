@@ -97,6 +97,10 @@ export type Settings = {
   /** Hit GitHub Releases on startup to surface a newer version in the
    * status bar. Off = no network calls. */
   checkForUpdatesOnStartup: boolean;
+  /** Snapshot xterm scrollback to buffers.json so session restore can
+   * replay it. Off = nothing is written and existing buffers are cleared
+   * on toggle; restored sessions come back with empty terminals. */
+  persistScrollback: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -110,6 +114,7 @@ export const DEFAULT_SETTINGS: Settings = {
   shellPath: "",
   shellArgs: "",
   checkForUpdatesOnStartup: true,
+  persistScrollback: true,
 };
 
 export const SETTINGS_LIMITS = {
@@ -312,6 +317,10 @@ function clampSettings(s: Partial<Settings>): Settings {
       typeof s.checkForUpdatesOnStartup === "boolean"
         ? s.checkForUpdatesOnStartup
         : DEFAULT_SETTINGS.checkForUpdatesOnStartup,
+    persistScrollback:
+      typeof s.persistScrollback === "boolean"
+        ? s.persistScrollback
+        : DEFAULT_SETTINGS.persistScrollback,
   };
 }
 
@@ -413,9 +422,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateSettings: async (patch) => {
-    const next = clampSettings({ ...get().settings, ...patch });
+    const prev = get().settings;
+    const next = clampSettings({ ...prev, ...patch });
     set({ settings: next });
     await saveSettings(next);
+    // Toggling scrollback persistence off — wipe the existing buffers
+    // file once so disk doesn't keep stale snapshots from before the
+    // toggle. Subsequent saves are skipped by flushSessionSave.
+    if (prev.persistScrollback && !next.persistScrollback) {
+      try {
+        await saveBuffers({});
+      } catch {
+        /* non-fatal */
+      }
+    }
   },
 
   requestTabRename: (tabId) => set({ renamingTabId: tabId }),
@@ -1260,11 +1280,14 @@ export async function flushSessionSave(): Promise<void> {
     lastActiveTabByProject: s.lastActiveTabByProject,
     projects: s.projects,
   });
-  // Write buffers first so a reader that sees the new session.json can
-  // always find the bufferIds it references. Run in parallel for speed;
-  // the order matters only if one write fails mid-flight.
+  // Skip the buffers write when the user opted out of scrollback
+  // persistence — buffers.json was already wiped at the toggle moment, so
+  // we just stop overwriting it.
+  const writes = s.settings.persistScrollback
+    ? [saveBuffers(buffers), saveSession(session)]
+    : [saveSession(session)];
   try {
-    await Promise.all([saveBuffers(buffers), saveSession(session)]);
+    await Promise.all(writes);
   } catch (err) {
     console.error("session save failed:", err);
   }

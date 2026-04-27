@@ -241,6 +241,27 @@ export function SettingsDialog({
               version exists, a clickable badge appears in the status bar.
             </p>
           </div>
+
+          <div className="settings__field settings__field--check">
+            <label className="settings__check">
+              <input
+                type="checkbox"
+                checked={settings.persistScrollback}
+                onChange={(e) =>
+                  void updateSettings({
+                    persistScrollback: e.target.checked,
+                  })
+                }
+              />
+              <span>Persist scrollback across restarts</span>
+            </label>
+            <p className="settings__hint">
+              Snapshots each terminal’s scrollback to <code>buffers.json</code>{" "}
+              so restored sessions show the prior output. Off keeps disk
+              writes lighter and avoids retaining sensitive output between
+              launches; existing snapshots are wiped when you turn it off.
+            </p>
+          </div>
         </section>
 
         <section className="settings__section">

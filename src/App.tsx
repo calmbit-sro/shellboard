@@ -169,7 +169,16 @@ function App() {
         let didRestore = false;
         if (session && Object.keys(session.tabsByProject).length > 0) {
           try {
-            await useAppStore.getState().restoreSession(session, buffers);
+            // Honor the user's scrollback persistence preference: when off,
+            // ignore any buffers that may still exist on disk so restored
+            // terminals come back empty.
+            const effectiveBuffers = useAppStore.getState().settings
+              .persistScrollback
+              ? buffers
+              : ({} as Record<string, string>);
+            await useAppStore
+              .getState()
+              .restoreSession(session, effectiveBuffers);
             didRestore = true;
           } catch (err) {
             // A malformed session.json shouldn't leave the user with a blank
