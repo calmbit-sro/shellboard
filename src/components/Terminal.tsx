@@ -36,6 +36,7 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
   const xtermRef = useRef<XTerm | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const searchRef = useRef<SearchAddon | null>(null);
+  const fitAndSyncRef = useRef<(() => void) | null>(null);
 
   const fontFamily = useAppStore((s) => s.settings.terminalFontFamily);
   const fontSize = useAppStore((s) => s.settings.terminalFontSize);
@@ -167,18 +168,26 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
       return true;
     });
 
-    try {
-      fit.fit();
-    } catch {
-      /* container may not be laid out yet */
-    }
-
-    // Sync PTY to whatever xterm measured.
-    void invoke("resize_pty", {
-      id: terminalId,
-      cols: xterm.cols,
-      rows: xterm.rows,
-    });
+    // Single source of truth for "make xterm match the container, then push
+    // those dimensions to the PTY". Used at mount, on tab activation, and
+    // after font changes — anywhere the container may have been measured
+    // wrong or the cell metrics changed without a corresponding container
+    // resize. ResizeObserver-driven resizes during a drag still go through
+    // the debounced xterm.onResize path below to avoid SIGWINCH spam.
+    const fitAndSync = () => {
+      try {
+        fit.fit();
+      } catch {
+        /* container may be hidden or not laid out yet */
+      }
+      void invoke("resize_pty", {
+        id: terminalId,
+        cols: xterm.cols,
+        rows: xterm.rows,
+      });
+    };
+    fitAndSyncRef.current = fitAndSync;
+    fitAndSync();
 
     const disposables: { dispose: () => void }[] = [];
     const unlisteners: UnlistenFn[] = [];
@@ -247,27 +256,16 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
       }),
     );
 
-    // Debounce resize_pty so a window drag doesn't send dozens of SIGWINCH
-    // signals per second to the shell — that causes readline to redraw
-    // repeatedly, which in certain states leaves phantom prompt lines
-    // behind. We ship the final size ~100 ms after the user stops dragging.
-    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
-    let pendingResize: { cols: number; rows: number } | null = null;
+    // Push every xterm size change to the PTY immediately. Earlier this was
+    // debounced 100 ms to avoid SIGWINCH spam during a window drag, but the
+    // ResizeObserver→RAF→fit chain already coalesces to ~60 Hz, so a second
+    // debounce layer just left a window where xterm.cols/rows had updated
+    // but the PTY hadn't — TUI apps (Claude Code/Ink) rendered with stale
+    // dimensions and left dirty cells in the freshly-grown area. Sending
+    // eagerly keeps xterm and PTY in lockstep frame-by-frame.
     disposables.push(
       xterm.onResize(({ cols, rows }) => {
-        pendingResize = { cols, rows };
-        if (resizeTimer) clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(() => {
-          resizeTimer = null;
-          if (pendingResize) {
-            void invoke("resize_pty", {
-              id: terminalId,
-              cols: pendingResize.cols,
-              rows: pendingResize.rows,
-            });
-            pendingResize = null;
-          }
-        }, 100);
+        void invoke("resize_pty", { id: terminalId, cols, rows });
       }),
     );
 
@@ -301,7 +299,6 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
       disposed = true;
       resizeObserver.disconnect();
       if (fitRaf !== null) cancelAnimationFrame(fitRaf);
-      if (resizeTimer) clearTimeout(resizeTimer);
       container.removeEventListener("mouseup", onMouseUp);
       container.removeEventListener("mousedown", onMouseDown);
       for (const d of disposables) d.dispose();
@@ -311,15 +308,20 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
       xtermRef.current = null;
       fitRef.current = null;
       searchRef.current = null;
+      fitAndSyncRef.current = null;
     };
   }, [terminalId]);
 
-  // When this terminal becomes active, just give it focus. Sizing stays
-  // correct because hidden slots keep their layout (visibility: hidden),
-  // so ResizeObserver has been tracking size all along.
+  // When this terminal becomes active, give it focus and re-fit. Hidden
+  // slots are laid out (visibility: hidden, inset: 0) and ResizeObserver
+  // tracks them, but if the container wasn't yet at its final size at mount
+  // — or the PTY missed an earlier resize — the saved cols/rows can be
+  // stale. Re-fitting on activation is cheap and prevents the symptom where
+  // typed input appears below the prompt because PTY cols ≠ xterm cols.
   useEffect(() => {
     if (!isActive) return;
     const raf = requestAnimationFrame(() => {
+      fitAndSyncRef.current?.();
       xtermRef.current?.focus();
     });
     return () => cancelAnimationFrame(raf);
@@ -328,7 +330,6 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
   // Apply font settings live to an already-mounted xterm.
   useEffect(() => {
     const xterm = xtermRef.current;
-    const fit = fitRef.current;
     if (!xterm) return;
     if (
       xterm.options.fontFamily === fontFamily &&
@@ -343,11 +344,7 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
       /* renderer may not support it */
     }
     const raf = requestAnimationFrame(() => {
-      try {
-        fit?.fit();
-      } catch {
-        /* container may be hidden */
-      }
+      fitAndSyncRef.current?.();
       try {
         xterm.refresh(0, Math.max(0, xterm.rows - 1));
       } catch {

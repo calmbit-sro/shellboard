@@ -70,6 +70,16 @@ body,
   height: 100% !important;
 }
 
+/* xterm.css ships with `background-color: #000` on the viewport. When the
+ * container content-box height isn't an exact multiple of cellHeight, the
+ * leftover (up to cellHeight-1 px) at the bottom shows that black strip
+ * through the gap between the grid and the viewport bottom — looks like a
+ * stray margin in a non-black theme. Make it transparent so the panel bg
+ * shows instead. */
+.terminal-container .xterm-viewport {
+  background-color: transparent !important;
+}
+
 .terminal-search {
   position: absolute;
   top: 8px;
