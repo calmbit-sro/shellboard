@@ -5,6 +5,47 @@ All notable changes to Shellboard will be documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] — 2026-05-04
+
+### Fixed
+
+- **Multi-byte UTF-8 corruption at PTY chunk boundaries.** Characters whose
+  bytes happened to land across two `read()` calls (e.g. Claude's `❯`
+  prompt — `E2 9D AF`) rendered as `��` because `String::from_utf8_lossy`
+  was substituting each partial fragment with U+FFFD. The Rust reader now
+  carries 0–3 trailing bytes between iterations and only decodes at
+  codepoint boundaries; whatever's still buffered at EOF still goes through
+  lossy so genuinely invalid bytes round-trip the same way as before. Unit
+  tests cover 3-byte, 4-byte, and stray-continuation cases.
+- **Theme reapply silently no-oping under xterm v6.** xterm v6 added a
+  reference-equality guard on object options (`terminal.options.theme = ref`
+  is skipped if `ref` is the previously-stored object). Live theme switch
+  now spreads the cached preset into a fresh object before assignment, so
+  the change always takes effect — including any future flow that
+  re-applies the same `themeId`.
+- **Two React copies bundled under Vite 8.** `react-mosaic-component`'s
+  transitive `react-dnd-multi-backend` pins its own `react-dom@18`, and
+  Vite 8 / Rolldown stopped deduping it implicitly the way Vite 7 / Rollup
+  did. The result was a blank window at boot with
+  `ReactSharedInternals.ReactCurrentDispatcher` undefined. `vite.config.ts`
+  now pins `resolve.dedupe: ["react", "react-dom"]`. Bundle dropped ~130 KB
+  as a side benefit.
+
+### Changed
+
+- **xterm.js 5.5 → 6.0.** Bumped `@xterm/xterm` and addons (`fit` 0.10 →
+  0.11, `search` 0.15 → 0.16, `serialize` 0.13 → 0.14, `web-links` 0.11 →
+  0.12). v6's viewport rewrite ships the VS Code-derived scrollbar, which
+  expects `--vscode-scrollbar-slider-*` CSS variables on the host —
+  Shellboard now sets neutral translucent whites so the slider is visible
+  on every theme.
+- **Frontend toolchain.** TypeScript 5.8 → 6.0, Vite 7 → 8 (now uses
+  Rolldown), `@vitejs/plugin-react` 4 → 6, `@dnd-kit/sortable` 8 → 10,
+  zustand 4 → 5 (curried `create<T>()(...)` form is required).
+- **Backend.** Tauri 2.10 → 2.11 with the npm `@tauri-apps/*` packages and
+  the Rust `tauri` crate kept in lockstep (a mismatch is a hard error at
+  dev startup). `portable-pty` 0.8 → 0.9; `which` 6 → 8.
+
 ## [1.3.0] — 2026-04-27
 
 ### Added

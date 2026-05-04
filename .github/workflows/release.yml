@@ -71,6 +71,50 @@ jobs:
       - name: Install npm deps
         run: npm ci
 
+      # Extract the section for the tag's version from CHANGELOG.md so the
+      # GitHub Release body shows what's in this version, followed by the
+      # static install / Gatekeeper instructions. Strip the leading `v` from
+      # the tag (v1.4.0 → 1.4.0) before matching.
+      - name: Extract changelog notes
+        id: notes
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          notes=$(awk -v target="## [$version]" '
+            index($0, target) == 1 { capturing=1; next }
+            capturing && /^## \[/ { exit }
+            capturing { print }
+          ' CHANGELOG.md)
+          {
+            echo "body<<RELEASE_NOTES_EOF"
+            if [ -n "$notes" ]; then
+              echo "## What's new in ${GITHUB_REF_NAME}"
+              echo
+              echo "$notes"
+            fi
+            cat <<'STATIC'
+          ### Install
+
+          - **macOS (Apple Silicon)**: `Shellboard_*_aarch64.dmg` — open, drag into *Applications*.
+          - **macOS (Intel)**: `Shellboard_*_x64.dmg` — open, drag into *Applications*.
+          - **Linux (AppImage)**: `Shellboard_*.AppImage` — `chmod +x` and run.
+          - **Linux (Debian/Ubuntu)**: `Shellboard_*_amd64.deb` — `sudo apt install ./Shellboard_*.deb`.
+
+          ### macOS: unsigned-build notice
+
+          This build isn't code-signed. On first launch macOS Gatekeeper will refuse to open it.
+
+          - **Option 1** — right-click the app in *Applications* → **Open** → **Open anyway**.
+          - **Option 2** — strip the quarantine attribute:
+            ```sh
+            xattr -cr /Applications/Shellboard.app
+            ```
+
+          After either step the app launches normally every time.
+          STATIC
+            echo "RELEASE_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build & upload release artifacts
         uses: tauri-apps/tauri-action@v0
         env:
@@ -84,25 +128,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Shellboard ${{ github.ref_name }}"
-          releaseBody: |
-            ### Install
-
-            - **macOS (Apple Silicon)**: `Shellboard_*_aarch64.dmg` — open, drag into *Applications*.
-            - **macOS (Intel)**: `Shellboard_*_x64.dmg` — open, drag into *Applications*.
-            - **Linux (AppImage)**: `Shellboard_*.AppImage` — `chmod +x` and run.
-            - **Linux (Debian/Ubuntu)**: `Shellboard_*_amd64.deb` — `sudo apt install ./Shellboard_*.deb`.
-
-            ### macOS: unsigned-build notice
-
-            This build isn't code-signed. On first launch macOS Gatekeeper will refuse to open it.
-
-            - **Option 1** — right-click the app in *Applications* → **Open** → **Open anyway**.
-            - **Option 2** — strip the quarantine attribute:
-              ```sh
-              xattr -cr /Applications/Shellboard.app
-              ```
-
-            After either step the app launches normally every time.
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
