@@ -5,6 +5,10 @@ name: Release
 # then creates a DRAFT GitHub Release so you can review and publish manually.
 #
 # Windows is optional; enable it by adding `windows-latest` to the matrix.
+#
+# The draft release is created up-front in a single job; the matrix builds
+# upload artifacts into it by `releaseId`. This avoids the race where two
+# parallel matrix jobs both try to create the same tag and one gets a 5xx.
 
 on:
   push:
@@ -16,7 +20,79 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  create-release:
+    name: Create draft release
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create.outputs.release_id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Extract the section for the tag's version from CHANGELOG.md so the
+      # GitHub Release body shows what's in this version, followed by the
+      # static install / Gatekeeper instructions. Strip the leading `v` from
+      # the tag (v1.4.0 → 1.4.0) before matching.
+      - name: Extract changelog notes
+        id: notes
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          notes=$(awk -v target="## [$version]" '
+            index($0, target) == 1 { capturing=1; next }
+            capturing && /^## \[/ { exit }
+            capturing { print }
+          ' CHANGELOG.md)
+          {
+            echo "body<<RELEASE_NOTES_EOF"
+            if [ -n "$notes" ]; then
+              echo "## What's new in ${GITHUB_REF_NAME}"
+              echo
+              echo "$notes"
+            fi
+            cat <<'STATIC'
+          ### Install
+
+          - **macOS (Apple Silicon)**: `Shellboard_*_aarch64.dmg` — open, drag into *Applications*.
+          - **Linux (AppImage)**: `Shellboard_*.AppImage` — `chmod +x` and run.
+          - **Linux (Debian/Ubuntu)**: `Shellboard_*_amd64.deb` — `sudo apt install ./Shellboard_*.deb`.
+
+          ### macOS: unsigned-build notice
+
+          This build isn't code-signed. On first launch macOS Gatekeeper will refuse to open it.
+
+          - **Option 1** — right-click the app in *Applications* → **Open** → **Open anyway**.
+          - **Option 2** — strip the quarantine attribute:
+            ```sh
+            xattr -cr /Applications/Shellboard.app
+            ```
+
+          After either step the app launches normally every time.
+          STATIC
+            echo "RELEASE_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create draft release
+        id: create
+        uses: actions/github-script@v7
+        env:
+          RELEASE_BODY: ${{ steps.notes.outputs.body }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        with:
+          script: |
+            const tag = process.env.RELEASE_TAG;
+            const { data } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              name: `Shellboard ${tag}`,
+              body: process.env.RELEASE_BODY,
+              draft: true,
+              prerelease: false,
+            });
+            core.setOutput('release_id', data.id);
+
+  build:
+    needs: create-release
     strategy:
       fail-fast: false
       matrix:
@@ -67,49 +143,6 @@ jobs:
       - name: Install npm deps
         run: npm ci
 
-      # Extract the section for the tag's version from CHANGELOG.md so the
-      # GitHub Release body shows what's in this version, followed by the
-      # static install / Gatekeeper instructions. Strip the leading `v` from
-      # the tag (v1.4.0 → 1.4.0) before matching.
-      - name: Extract changelog notes
-        id: notes
-        shell: bash
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          notes=$(awk -v target="## [$version]" '
-            index($0, target) == 1 { capturing=1; next }
-            capturing && /^## \[/ { exit }
-            capturing { print }
-          ' CHANGELOG.md)
-          {
-            echo "body<<RELEASE_NOTES_EOF"
-            if [ -n "$notes" ]; then
-              echo "## What's new in ${GITHUB_REF_NAME}"
-              echo
-              echo "$notes"
-            fi
-            cat <<'STATIC'
-          ### Install
-
-          - **macOS (Apple Silicon)**: `Shellboard_*_aarch64.dmg` — open, drag into *Applications*.
-          - **Linux (AppImage)**: `Shellboard_*.AppImage` — `chmod +x` and run.
-          - **Linux (Debian/Ubuntu)**: `Shellboard_*_amd64.deb` — `sudo apt install ./Shellboard_*.deb`.
-
-          ### macOS: unsigned-build notice
-
-          This build isn't code-signed. On first launch macOS Gatekeeper will refuse to open it.
-
-          - **Option 1** — right-click the app in *Applications* → **Open** → **Open anyway**.
-          - **Option 2** — strip the quarantine attribute:
-            ```sh
-            xattr -cr /Applications/Shellboard.app
-            ```
-
-          After either step the app launches normally every time.
-          STATIC
-            echo "RELEASE_NOTES_EOF"
-          } >> "$GITHUB_OUTPUT"
-
       - name: Build & upload release artifacts
         uses: tauri-apps/tauri-action@v0
         env:
@@ -121,9 +154,5 @@ jobs:
           # APPLE_CERTIFICATE_PASSWORD / APPLE_SIGNING_IDENTITY /
           # APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID env mappings here.
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Shellboard ${{ github.ref_name }}"
-          releaseBody: ${{ steps.notes.outputs.body }}
-          releaseDraft: true
-          prerelease: false
+          releaseId: ${{ needs.create-release.outputs.release_id }}
           args: ${{ matrix.args }}
