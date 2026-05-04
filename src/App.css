@@ -80,6 +80,16 @@ body,
   background-color: transparent !important;
 }
 
+/* xterm v6 swapped its viewport scrollbar for the VS Code scrollable
+ * element, which expects --vscode-scrollbar-slider-* CSS vars on the host.
+ * Without these the slider has no fill and the scrollbar is invisible. We
+ * use neutral translucent whites so the slider reads on every theme. */
+.terminal-container .xterm {
+  --vscode-scrollbar-slider-background: rgba(255, 255, 255, 0.18);
+  --vscode-scrollbar-slider-hoverBackground: rgba(255, 255, 255, 0.28);
+  --vscode-scrollbar-slider-activeBackground: rgba(255, 255, 255, 0.4);
+}
+
 .terminal-search {
   position: absolute;
   top: 8px;

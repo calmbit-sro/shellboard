@@ -358,7 +358,10 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
   useEffect(() => {
     const xterm = xtermRef.current;
     if (!xterm) return;
-    const theme = findTheme(themeId).theme;
+    // Spread to a fresh object — v6 compares option objects by reference and
+    // skips no-op assignments, so reapplying the same cached preset wouldn't
+    // take effect.
+    const theme = { ...findTheme(themeId).theme };
     xterm.options = { theme };
     try {
       xterm.clearTextureAtlas();

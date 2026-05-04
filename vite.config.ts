@@ -8,6 +8,15 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [react()],
 
+  // react-mosaic-component's transitive react-dnd-multi-backend ships its own
+  // nested react-dom@18, and Vite 8 / Rolldown no longer dedupes it
+  // implicitly the way Vite 7 / Rollup did. Without this we end up with two
+  // React copies in the bundle and ReactSharedInternals goes undefined at
+  // runtime ("ReactCurrentDispatcher" error on boot).
+  resolve: {
+    dedupe: ["react", "react-dom"],
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

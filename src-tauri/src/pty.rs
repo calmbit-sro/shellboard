@@ -39,6 +39,81 @@ fn shell_basename(path: &str) -> &str {
     path.rsplit(['/', '\\']).next().unwrap_or(path)
 }
 
+/// Returns the index up to which `bytes` can be safely UTF-8 decoded without
+/// truncating a multi-byte char. Trailing bytes that look like the start of
+/// an incomplete sequence (lead byte without all its continuations) are
+/// excluded so the caller can carry them into the next read.
+///
+/// Invalid bytes that are *not* the start of an incomplete sequence are left
+/// in — `from_utf8_lossy` will substitute them with U+FFFD as before.
+fn utf8_safe_split(bytes: &[u8]) -> usize {
+    let len = bytes.len();
+    // A UTF-8 char is at most 4 bytes, so the lead of an incomplete trailing
+    // sequence must be within the last 3 positions.
+    let start = len.saturating_sub(3);
+    for i in (start..len).rev() {
+        let b = bytes[i];
+        // Continuation byte: keep walking back to find the lead.
+        if b & 0b1100_0000 == 0b1000_0000 {
+            continue;
+        }
+        let expected = if b & 0b1000_0000 == 0 {
+            1
+        } else if b & 0b1110_0000 == 0b1100_0000 {
+            2
+        } else if b & 0b1111_0000 == 0b1110_0000 {
+            3
+        } else if b & 0b1111_1000 == 0b1111_0000 {
+            4
+        } else {
+            // Not a valid lead byte — leave it for lossy to replace.
+            return len;
+        };
+        let have = len - i;
+        return if have < expected { i } else { len };
+    }
+    // No lead byte in the trailing window. Either the buffer is empty or
+    // it ends with stray continuation bytes; either way, don't hold back.
+    len
+}
+
+#[cfg(test)]
+mod tests {
+    use super::utf8_safe_split;
+
+    #[test]
+    fn holds_back_split_three_byte_char() {
+        // `❯` is E2 9D AF. Split after the lead byte.
+        let bytes = b"hi \xe2";
+        assert_eq!(utf8_safe_split(bytes), 3);
+        let bytes = b"hi \xe2\x9d";
+        assert_eq!(utf8_safe_split(bytes), 3);
+        let bytes = b"hi \xe2\x9d\xaf";
+        assert_eq!(utf8_safe_split(bytes), 6);
+    }
+
+    #[test]
+    fn holds_back_split_four_byte_char() {
+        // U+1F600 is F0 9F 98 80.
+        let bytes = b"x\xf0\x9f\x98";
+        assert_eq!(utf8_safe_split(bytes), 1);
+    }
+
+    #[test]
+    fn passes_through_ascii() {
+        assert_eq!(utf8_safe_split(b"hello"), 5);
+        assert_eq!(utf8_safe_split(b""), 0);
+    }
+
+    #[test]
+    fn does_not_hold_back_invalid_bytes() {
+        // Stray continuation byte at the end is invalid, not incomplete —
+        // let lossy replace it instead of carrying forever.
+        let bytes = b"x\x80";
+        assert_eq!(utf8_safe_split(bytes), 2);
+    }
+}
+
 /// When auto cwd tracking is on, write a shell-specific init file into the
 /// OS temp dir and wire it into the spawned shell via the right flag:
 ///   zsh  → ZDOTDIR  (custom .zshrc that sources user's then adds chpwd hook)
@@ -404,11 +479,20 @@ pub async fn spawn_pty(
     tokio::task::spawn_blocking(move || {
         let mut reader = reader;
         let mut buf = [0u8; 8192];
+        // Carries 0–3 trailing bytes that look like the start of an
+        // incomplete multi-byte UTF-8 sequence, so we don't decode a
+        // chunk-boundary split as replacement chars. e.g. `❯` is E2 9D AF
+        // and a read that ends mid-glyph would otherwise emit `��`.
+        let mut pending: Vec<u8> = Vec::new();
         loop {
             match reader.read(&mut buf) {
                 Ok(0) => break, // EOF, child exited
                 Ok(n) => {
-                    let data = String::from_utf8_lossy(&buf[..n]).to_string();
+                    pending.extend_from_slice(&buf[..n]);
+                    let split = utf8_safe_split(&pending);
+                    let tail = pending.split_off(split);
+                    let data = String::from_utf8_lossy(&pending).to_string();
+                    pending = tail;
                     if app_for_reader
                         .emit(&data_event, PtyDataPayload { data })
                         .is_err()
@@ -418,6 +502,12 @@ pub async fn spawn_pty(
                 }
                 Err(_) => break,
             }
+        }
+        // Flush whatever's still buffered — at EOF an incomplete sequence
+        // will never complete, so let lossy substitute replacement chars.
+        if !pending.is_empty() {
+            let data = String::from_utf8_lossy(&pending).to_string();
+            let _ = app_for_reader.emit(&data_event, PtyDataPayload { data });
         }
         // Notify the frontend that this PTY has ended so it can remove the
         // panel. Session cleanup on the Rust side still happens via kill_pty

@@ -372,7 +372,7 @@ async function killTerminal(id: string): Promise<void> {
   }
 }
 
-export const useAppStore = create<AppState>((set, get) => ({
+export const useAppStore = create<AppState>()((set, get) => ({
   tabs: [],
   activeTabId: null,
   activeProjectId: null,
