@@ -1,7 +1,7 @@
 name: Release
 
 # Triggered by tag push (e.g. `git tag v0.1.0 && git push origin v0.1.0`).
-# Builds installable bundles for macOS (Apple Silicon + Intel) and Linux,
+# Builds installable bundles for macOS (Apple Silicon) and Linux,
 # then creates a DRAFT GitHub Release so you can review and publish manually.
 #
 # Windows is optional; enable it by adding `windows-latest` to the matrix.
@@ -25,10 +25,6 @@ jobs:
             rust_target: aarch64-apple-darwin
             args: "--target aarch64-apple-darwin"
             label: "macOS (Apple Silicon)"
-          - platform: macos-13
-            rust_target: x86_64-apple-darwin
-            args: "--target x86_64-apple-darwin"
-            label: "macOS (Intel)"
           - platform: ubuntu-22.04
             rust_target: ""
             args: ""
@@ -96,7 +92,6 @@ jobs:
           ### Install
 
           - **macOS (Apple Silicon)**: `Shellboard_*_aarch64.dmg` — open, drag into *Applications*.
-          - **macOS (Intel)**: `Shellboard_*_x64.dmg` — open, drag into *Applications*.
           - **Linux (AppImage)**: `Shellboard_*.AppImage` — `chmod +x` and run.
           - **Linux (Debian/Ubuntu)**: `Shellboard_*_amd64.deb` — `sudo apt install ./Shellboard_*.deb`.
 
