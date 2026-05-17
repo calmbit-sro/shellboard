@@ -3,18 +3,18 @@ import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useAppStore } from "../store/appStore";
+import {
+  ArrowDown,
+  ArrowUp,
+  Folder,
+  GitBranch,
+  Terminal as TerminalIcon,
+} from "./icons";
 import "./StatusBar.css";
 
 type StatusBarProps = {
   onOpenShortcuts: () => void;
 };
-
-function basename(path: string): string {
-  if (!path) return "";
-  const norm = path.replace(/[\\/]+$/, "");
-  const parts = norm.split(/[\\/]/);
-  return parts[parts.length - 1] || path;
-}
 
 export function StatusBar({ onOpenShortcuts }: StatusBarProps) {
   const activeTabId = useAppStore((s) => s.activeTabId);
@@ -39,7 +39,6 @@ export function StatusBar({ onOpenShortcuts }: StatusBarProps) {
   const [gitStatus, setGitStatus] = useState<GitStatus | null>(null);
   const [version, setVersion] = useState<string | null>(null);
 
-  // Fetch app version once per mount — it never changes during runtime.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -55,9 +54,6 @@ export function StatusBar({ onOpenShortcuts }: StatusBarProps) {
     };
   }, []);
 
-  // Fetch git status when cwd changes, plus a light poll every 5s so that
-  // commits / stages / pushes reflect without the user changing directory.
-  // git status --porcelain is <30 ms so the cost is negligible.
   useEffect(() => {
     if (!cwd) {
       setGitStatus(null);
@@ -81,84 +77,89 @@ export function StatusBar({ onOpenShortcuts }: StatusBarProps) {
   }, [cwd]);
 
   const hasTerminal = !!(activeTab && cwd);
-  const shellName = basename(
-    (typeof navigator !== "undefined" &&
-      (window as unknown as { __TAURI_SHELL_NAME__?: string })
-        .__TAURI_SHELL_NAME__) ||
-      inferShell(),
-  );
+  const shellName = inferShell();
+  const branchLabel = gitStatus?.branch
+    ? middleTruncate(gitStatus.branch, 28)
+    : null;
 
   return (
     <div className="status-bar">
       {hasTerminal && (
         <>
-          <span className="status-bar__segment status-bar__shell">
-            {shellName || "shell"}
+          <span className="status-bar__segment" title={shellName}>
+            <TerminalIcon size={11} className="status-bar__icon" />
+            <span>{shellName}</span>
           </span>
           <span className="status-bar__sep">·</span>
-          <span
-            className="status-bar__segment status-bar__cwd"
-            title={cwd}
-          >
-            {abbreviatePath(cwd)}
+          <span className="status-bar__segment status-bar__cwd" title={cwd}>
+            <Folder size={11} className="status-bar__icon" />
+            <span>{abbreviatePath(cwd)}</span>
           </span>
-          {gitStatus?.branch && (
+          {branchLabel && gitStatus && (
             <>
               <span className="status-bar__sep">·</span>
               <span
                 className="status-bar__segment status-bar__branch"
                 title={gitTooltip(gitStatus)}
               >
-                <span className="status-bar__branch-name">
-                  ⎇ {gitStatus.branch}
-                </span>
-                {gitStatus.staged > 0 && (
-                  <span
-                    className="status-bar__git-staged"
-                    title="Staged changes"
-                  >
-                    +{gitStatus.staged}
-                  </span>
-                )}
-                {gitStatus.modified > 0 && (
-                  <span
-                    className="status-bar__git-modified"
-                    title="Modified tracked files"
-                  >
-                    ●{gitStatus.modified}
-                  </span>
-                )}
-                {gitStatus.untracked > 0 && (
-                  <span
-                    className="status-bar__git-untracked"
-                    title="Untracked files"
-                  >
-                    ?{gitStatus.untracked}
-                  </span>
-                )}
-                {gitStatus.conflicts > 0 && (
-                  <span
-                    className="status-bar__git-conflicts"
-                    title="Conflicts"
-                  >
-                    ⚠{gitStatus.conflicts}
-                  </span>
-                )}
-                {gitStatus.ahead > 0 && (
-                  <span className="status-bar__git-ahead">
-                    ↑{gitStatus.ahead}
-                  </span>
-                )}
-                {gitStatus.behind > 0 && (
-                  <span className="status-bar__git-behind">
-                    ↓{gitStatus.behind}
-                  </span>
-                )}
+                <GitBranch size={11} className="status-bar__icon" />
+                <span>{branchLabel}</span>
               </span>
+              {gitStatus.staged > 0 && (
+                <span
+                  className="status-bar__git status-bar__git--staged"
+                  title="Staged changes"
+                >
+                  +{gitStatus.staged}
+                </span>
+              )}
+              {gitStatus.modified > 0 && (
+                <span
+                  className="status-bar__git status-bar__git--modified"
+                  title="Modified tracked files"
+                >
+                  ●{gitStatus.modified}
+                </span>
+              )}
+              {gitStatus.untracked > 0 && (
+                <span
+                  className="status-bar__git status-bar__git--untracked"
+                  title="Untracked files"
+                >
+                  ?{gitStatus.untracked}
+                </span>
+              )}
+              {gitStatus.conflicts > 0 && (
+                <span
+                  className="status-bar__git status-bar__git--conflicts"
+                  title="Conflicts"
+                >
+                  ⚠{gitStatus.conflicts}
+                </span>
+              )}
+              {gitStatus.ahead > 0 && (
+                <span
+                  className="status-bar__git status-bar__git--ahead"
+                  title={`${gitStatus.ahead} ahead`}
+                >
+                  <ArrowUp size={10} />
+                  {gitStatus.ahead}
+                </span>
+              )}
+              {gitStatus.behind > 0 && (
+                <span
+                  className="status-bar__git status-bar__git--behind"
+                  title={`${gitStatus.behind} behind`}
+                >
+                  <ArrowDown size={10} />
+                  {gitStatus.behind}
+                </span>
+              )}
             </>
           )}
         </>
       )}
+      <span className="status-bar__spacer" />
       {updateInfo && (
         <button
           type="button"
@@ -189,23 +190,26 @@ export function StatusBar({ onOpenShortcuts }: StatusBarProps) {
 }
 
 function inferShell(): string {
-  // We don't have direct env access in the renderer, but the common case is
-  // /bin/zsh on macOS. Good enough as a label; the real truth lives in PTY.
   const ua = navigator.userAgent.toLowerCase();
   if (ua.includes("mac")) return "zsh";
   if (ua.includes("windows")) return "pwsh";
   return "bash";
 }
 
-/**
- * Shorten paths to fit the status bar: /Users/petr/Projects/foo → ~/P…/foo
- * for anything starting with the home directory.
- */
+/** Replace `/Users/<me>` or `/home/<me>` prefix with `~`. */
 function abbreviatePath(path: string): string {
-  // Very basic heuristic — replace /Users/<me> or /home/<me> prefix with ~.
   const m = /^(?:\/Users\/|\/home\/)[^/]+(\/.*)?$/.exec(path);
   if (m) return `~${m[1] ?? ""}`;
   return path;
+}
+
+/** Keep head + tail visible, ellipsis in the middle. */
+function middleTruncate(value: string, max: number): string {
+  if (value.length <= max) return value;
+  const keep = max - 1; // accounting for the ellipsis
+  const head = Math.ceil(keep / 2);
+  const tail = Math.floor(keep / 2);
+  return `${value.slice(0, head)}…${value.slice(-tail)}`;
 }
 
 type GitInfo = {
@@ -225,7 +229,8 @@ function gitTooltip(s: GitInfo): string {
   if (s.staged) parts.push(`${s.staged} staged`);
   if (s.modified) parts.push(`${s.modified} modified`);
   if (s.untracked) parts.push(`${s.untracked} untracked`);
-  if (s.conflicts) parts.push(`${s.conflicts} conflict${s.conflicts === 1 ? "" : "s"}`);
+  if (s.conflicts)
+    parts.push(`${s.conflicts} conflict${s.conflicts === 1 ? "" : "s"}`);
   if (parts.length) lines.push(parts.join(", "));
   else lines.push("Clean working tree");
   if (s.ahead || s.behind) {
@@ -236,3 +241,4 @@ function gitTooltip(s: GitInfo): string {
   }
   return lines.join("\n");
 }
+

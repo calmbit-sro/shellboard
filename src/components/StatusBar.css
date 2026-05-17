@@ -2,123 +2,125 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 22px;
+  height: 28px;
   padding: 0 12px;
-  background: color-mix(in srgb, var(--theme-bg, #1e1e1e) 88%, #ffffff 12%);
-  border-top: 1px solid var(--theme-border, #1a1a1a);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--bg-1);
+  border-top: 1px solid var(--line);
+  font-family: var(--font-mono);
   font-size: 11px;
-  color: #a0a0a0;
+  color: var(--muted);
   user-select: none;
   flex-shrink: 0;
 }
 
 .status-bar__segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.status-bar__icon {
+  flex-shrink: 0;
+}
+
 .status-bar__sep {
-  opacity: 0.4;
+  color: var(--faint);
 }
 
 .status-bar__cwd {
-  font-family: "Menlo", Consolas, monospace;
-  max-width: 60%;
+  max-width: 40%;
 }
 
 .status-bar__branch {
-  color: #0a84ff;
-  font-family: "Menlo", Consolas, monospace;
+  color: var(--blue);
+}
+
+.status-bar__git {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
 }
 
-.status-bar__branch-name {
-  white-space: nowrap;
+.status-bar__git--staged {
+  color: var(--green);
 }
 
-.status-bar__git-staged {
-  color: #22c55e;
+.status-bar__git--modified {
+  color: var(--orange);
 }
 
-.status-bar__git-modified {
-  color: #e5a200;
+.status-bar__git--untracked {
+  color: var(--subtle);
 }
 
-.status-bar__git-untracked {
-  color: #909090;
+.status-bar__git--conflicts {
+  color: var(--red);
 }
 
-.status-bar__git-ahead {
-  color: #22c55e;
+.status-bar__git--ahead {
+  color: var(--green);
 }
 
-.status-bar__git-behind {
-  color: #ef4444;
+.status-bar__git--behind {
+  color: var(--red);
 }
 
-.status-bar__git-conflicts {
-  color: #ef4444;
+.status-bar__spacer {
+  flex: 1;
 }
 
 .status-bar__help {
-  margin-left: auto;
   width: 18px;
   height: 18px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: transparent;
-  color: #808080;
-  border: 1px solid #444;
+  color: var(--subtle);
+  border: 1px solid var(--line-strong);
   border-radius: 50%;
-  font-family: "Menlo", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1;
   cursor: pointer;
   padding: 0;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 
 .status-bar__help:hover {
-  color: #ffffff;
-  border-color: #0a84ff;
-  background: rgba(10, 132, 255, 0.15);
+  color: var(--fg);
+  border-color: var(--accent-ring);
+  background: var(--accent-soft);
 }
 
 .status-bar__update {
-  margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: rgba(10, 132, 255, 0.18);
-  color: #b0d4ff;
-  border: 1px solid rgba(10, 132, 255, 0.6);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  border: 1px solid var(--accent-ring);
   border-radius: 10px;
   font: inherit;
   font-size: 10px;
   letter-spacing: 0.3px;
   padding: 1px 8px;
   cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
 .status-bar__update:hover {
-  background: rgba(10, 132, 255, 0.32);
-  color: #ffffff;
-}
-
-/* Update badge already takes the auto-push to the right; cancel the
- * help button's own margin-left:auto so the two sit next to each other
- * instead of getting half the gap each. */
-.status-bar__update + .status-bar__help {
-  margin-left: 6px;
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
 }
 
 .status-bar__version {
-  font-family: "Menlo", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
-  color: #707070;
+  color: var(--subtle);
   letter-spacing: 0.3px;
 }
