@@ -246,6 +246,26 @@ export function SettingsDialog({
             <label className="settings__check">
               <input
                 type="checkbox"
+                checked={settings.showPanelHeader}
+                onChange={(e) =>
+                  void updateSettings({
+                    showPanelHeader: e.target.checked,
+                  })
+                }
+              />
+              <span>Show panel header</span>
+            </label>
+            <p className="settings__hint">
+              Render a thin header above each terminal split showing the
+              shell name and current directory. Turn off for absolute-minimum
+              chrome.
+            </p>
+          </div>
+
+          <div className="settings__field settings__field--check">
+            <label className="settings__check">
+              <input
+                type="checkbox"
                 checked={settings.persistScrollback}
                 onChange={(e) =>
                   void updateSettings({

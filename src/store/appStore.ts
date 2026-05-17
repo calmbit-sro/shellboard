@@ -103,6 +103,9 @@ export type Settings = {
    * replay it. Off = nothing is written and existing buffers are cleared
    * on toggle; restored sessions come back with empty terminals. */
   persistScrollback: boolean;
+  /** Show the 22px panel header above each terminal split (shell · cwd ·
+   * running indicator). Toggle off for absolute-minimum chrome. */
+  showPanelHeader: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -117,6 +120,7 @@ export const DEFAULT_SETTINGS: Settings = {
   shellArgs: "",
   checkForUpdatesOnStartup: true,
   persistScrollback: true,
+  showPanelHeader: true,
 };
 
 export const SETTINGS_LIMITS = {
@@ -333,6 +337,10 @@ function clampSettings(s: Partial<Settings>): Settings {
       typeof s.persistScrollback === "boolean"
         ? s.persistScrollback
         : DEFAULT_SETTINGS.persistScrollback,
+    showPanelHeader:
+      typeof s.showPanelHeader === "boolean"
+        ? s.showPanelHeader
+        : DEFAULT_SETTINGS.showPanelHeader,
   };
 }
 
