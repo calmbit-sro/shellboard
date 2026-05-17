@@ -111,8 +111,14 @@
   margin-left: 2px;
 }
 
-.tab--active .tab__close {
+.tab--active .tab__close,
+.tab__close:focus-visible {
   opacity: 1;
+}
+
+.tab__close:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-ring);
 }
 
 .tab__close:hover {

@@ -28,9 +28,11 @@
   gap: 12px;
 }
 
-.context-menu__item:hover:not(:disabled) {
+.context-menu__item:hover:not(:disabled),
+.context-menu__item:focus-visible:not(:disabled) {
   background: var(--bg-3);
   color: var(--fg);
+  outline: none;
 }
 
 .context-menu__item--danger {

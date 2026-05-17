@@ -90,10 +90,12 @@
   transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 
-.status-bar__help:hover {
+.status-bar__help:hover,
+.status-bar__help:focus-visible {
   color: var(--fg);
   border-color: var(--accent-ring);
   background: var(--accent-soft);
+  outline: none;
 }
 
 .status-bar__update {
@@ -112,10 +114,12 @@
   transition: background 0.12s ease, color 0.12s ease;
 }
 
-.status-bar__update:hover {
+.status-bar__update:hover,
+.status-bar__update:focus-visible {
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);
+  outline: none;
 }
 
 .status-bar__version {
