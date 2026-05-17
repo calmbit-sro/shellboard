@@ -2,12 +2,16 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { ProjectGroup } from "../store/appStore";
+import { Chevron, Folder, Plus } from "./icons";
 
 type GroupHeaderProps = {
   group: ProjectGroup;
   projectCount: number;
   editing: boolean;
+  expanded: boolean;
+  hasActivity: boolean;
   onToggle: () => void;
+  onAdd: () => void;
   onContextMenu: (x: number, y: number) => void;
   onCommitRename: (name: string) => void;
   onCancelRename: () => void;
@@ -17,7 +21,10 @@ export function GroupHeader({
   group,
   projectCount,
   editing,
+  expanded,
+  hasActivity,
   onToggle,
+  onAdd,
   onContextMenu,
   onCommitRename,
   onCancelRename,
@@ -66,14 +73,8 @@ export function GroupHeader({
         onContextMenu(e.clientX, e.clientY);
       }}
     >
-      <span
-        className={`group-header__chevron ${
-          group.collapsed ? "group-header__chevron--collapsed" : ""
-        }`}
-        aria-hidden
-      >
-        ▼
-      </span>
+      <Chevron open={expanded} />
+      <Folder size={11} className="group-header__folder" />
       {editing ? (
         <input
           ref={inputRef}
@@ -102,7 +103,23 @@ export function GroupHeader({
       ) : (
         <>
           <span className="group-header__name">{group.name}</span>
+          {hasActivity && (
+            <span className="group-header__activity" aria-label="Activity" />
+          )}
           <span className="group-header__count">{projectCount}</span>
+          <button
+            type="button"
+            className="group-header__add"
+            aria-label="Add project here"
+            title="Add project here"
+            onClick={(e) => {
+              e.stopPropagation();
+              onAdd();
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <Plus size={11} />
+          </button>
         </>
       )}
     </div>

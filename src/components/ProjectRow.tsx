@@ -11,11 +11,30 @@ type ProjectRowProps = {
   editing: boolean;
   active: boolean;
   hasActivity: boolean;
+  /** True when the row sits under a group — adds extra left indent. */
+  indented?: boolean;
+  /** Lowercased substring to highlight inside displayName. */
+  highlight?: string;
   onActivate: () => void;
   onContextMenu: (x: number, y: number) => void;
   onCommitRename: (name: string) => void;
   onCancelRename: () => void;
 };
+
+function renderHighlighted(name: string, query: string) {
+  if (!query) return name;
+  const i = name.toLowerCase().indexOf(query.toLowerCase());
+  if (i < 0) return name;
+  return (
+    <>
+      {name.slice(0, i)}
+      <mark className="project-row__mark">
+        {name.slice(i, i + query.length)}
+      </mark>
+      {name.slice(i + query.length)}
+    </>
+  );
+}
 
 export function ProjectRow({
   project,
@@ -23,6 +42,8 @@ export function ProjectRow({
   editing,
   active,
   hasActivity,
+  indented = false,
+  highlight = "",
   onActivate,
   onContextMenu,
   onCommitRename,
@@ -54,20 +75,25 @@ export function ProjectRow({
     "--project-color": project.color,
     transform: CSS.Transform.toString(transform),
     transition,
-    // Hide the in-place item completely while dragging — the DragOverlay
-    // renders a floating clone that follows the cursor, so keeping the
-    // original visible would produce a double / snap-back effect.
     opacity: isDragging ? 0 : 1,
+    boxShadow: active ? `inset 2px 0 0 ${project.color}` : undefined,
   } as CSSProperties;
 
-  // Skip attaching drag attrs/listeners during edit — they add role="button"
-  // and keyboard shortcuts that interfere with typing into the input.
   const dragProps = editing ? {} : { ...attributes, ...listeners };
+
+  const className = [
+    "project-row",
+    active ? "project-row--active" : "",
+    indented ? "project-row--indented" : "",
+    isDragging ? "project-row--dragging" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <div
       ref={setNodeRef}
-      className={`project-row ${isDragging ? "project-row--dragging" : ""}`}
+      className={className}
       style={style}
       {...dragProps}
       onClick={() => {
@@ -79,10 +105,7 @@ export function ProjectRow({
       }}
       title={project.path}
     >
-      <span
-        className={`project-row__indicator ${active ? "project-row__indicator--on" : ""}`}
-        aria-hidden
-      />
+      <span className="project-row__dot" aria-hidden />
       {editing ? (
         <input
           ref={inputRef}
@@ -110,7 +133,9 @@ export function ProjectRow({
         />
       ) : (
         <>
-          <span className="project-row__name">{displayName}</span>
+          <span className="project-row__name">
+            {renderHighlighted(displayName, highlight)}
+          </span>
           {hasActivity && (
             <span className="project-row__activity" aria-label="Activity" />
           )}

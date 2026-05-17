@@ -42,9 +42,12 @@ type CtxState = ProjectCtxState | GroupCtxState;
 
 type ProjectListProps = {
   onAddProject: (groupId?: string | null) => void;
+  /** Substring filter applied across all projects. When non-empty, groups
+   * with no matching projects are hidden and matching groups force-expand. */
+  search?: string;
 };
 
-export function ProjectList({ onAddProject }: ProjectListProps) {
+export function ProjectList({ onAddProject, search = "" }: ProjectListProps) {
   const projects = useAppStore((s) => s.projects);
   const groups = useAppStore((s) => s.groups);
   const activeProjectId = useAppStore((s) => s.activeProjectId);
@@ -99,19 +102,36 @@ export function ProjectList({ onAddProject }: ProjectListProps) {
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
   );
 
+  const searchQuery = search.trim().toLowerCase();
+  const matchesSearch = (p: Project) =>
+    !searchQuery || p.name.toLowerCase().includes(searchQuery);
+
   // Quick-add (autoCwdName) projects always render at the very bottom in
   // their own section, regardless of groupId. They're ephemeral and
   // shouldn't mix with the user's curated layout.
-  const autoCwdProjects = projects.filter((p) => p.autoCwdName);
+  const autoCwdProjects = projects
+    .filter((p) => p.autoCwdName)
+    .filter(matchesSearch);
   const regularProjects = projects.filter((p) => !p.autoCwdName);
-  const ungrouped = regularProjects.filter((p) => p.groupId === null);
+  const ungrouped = regularProjects
+    .filter((p) => p.groupId === null)
+    .filter(matchesSearch);
   const projectsByGroup = new Map<string, Project[]>();
   for (const g of groups) projectsByGroup.set(g.id, []);
   for (const p of regularProjects) {
-    if (p.groupId && projectsByGroup.has(p.groupId)) {
+    if (p.groupId && projectsByGroup.has(p.groupId) && matchesSearch(p)) {
       projectsByGroup.get(p.groupId)!.push(p);
     }
   }
+  // Hide groups with no matching projects while searching.
+  const visibleGroups = searchQuery
+    ? groups.filter((g) => (projectsByGroup.get(g.id)?.length ?? 0) > 0)
+    : groups;
+  const noResults =
+    searchQuery !== "" &&
+    visibleGroups.length === 0 &&
+    ungrouped.length === 0 &&
+    autoCwdProjects.length === 0;
 
   function buildProjectMenu(projectId: string): MenuItem[] {
     const project = projects.find((p) => p.id === projectId);
@@ -165,8 +185,10 @@ export function ProjectList({ onAddProject }: ProjectListProps) {
         });
       }
     }
+    items.push({ separator: true });
     items.push({
       label: "Remove",
+      danger: true,
       onClick: async () => {
         const openTabCount = tabs.filter(
           (t) => t.projectId === projectId,
@@ -191,12 +213,12 @@ export function ProjectList({ onAddProject }: ProjectListProps) {
     const idx = groups.findIndex((g) => g.id === groupId);
     const items: MenuItem[] = [
       {
-        label: "Add project here",
-        onClick: () => onAddProject(groupId),
-      },
-      {
         label: "Rename",
         onClick: () => setRenamingGroup(groupId),
+      },
+      {
+        label: "Add project here",
+        onClick: () => onAddProject(groupId),
       },
     ];
     if (idx > 0) {
@@ -211,8 +233,10 @@ export function ProjectList({ onAddProject }: ProjectListProps) {
         onClick: () => void reorderGroups(groupId, groups[idx + 1].id),
       });
     }
+    items.push({ separator: true });
     items.push({
       label: "Remove group",
+      danger: true,
       onClick: async () => {
         const projectsInGroup = projects.filter(
           (p) => p.groupId === groupId,
@@ -348,7 +372,7 @@ export function ProjectList({ onAddProject }: ProjectListProps) {
     return cwdLabel(cwd);
   }
 
-  function renderProjectRow(p: Project) {
+  function renderProjectRow(p: Project, opts: { indented?: boolean } = {}) {
     const hasActivity = tabs.some(
       (t) => t.projectId === p.id && t.hasUnread,
     );
@@ -360,6 +384,8 @@ export function ProjectList({ onAddProject }: ProjectListProps) {
         editing={renamingId === p.id}
         active={activeProjectId === p.id}
         hasActivity={hasActivity}
+        indented={!!opts.indented}
+        highlight={searchQuery}
         onActivate={() => void openProject(p.id)}
         onContextMenu={(x, y) =>
           setCtx({ kind: "project", x, y, projectId: p.id })
@@ -395,31 +421,31 @@ export function ProjectList({ onAddProject }: ProjectListProps) {
             droppable: { strategy: MeasuringStrategy.Always },
           }}
         >
-          {ungrouped.length > 0 && (
-            <SortableContext
-              items={ungrouped.map((p) => p.id)}
-              strategy={verticalListSortingStrategy}
-            >
-              {ungrouped.map(renderProjectRow)}
-            </SortableContext>
-          )}
-
           {/* Outer SortableContext makes group headers themselves drag-to-
               reorder. Each group's projects live in their own nested
               SortableContext so within-group reorder uses a sibling ID set. */}
           <SortableContext
-            items={groups.map((g) => `group-${g.id}`)}
+            items={visibleGroups.map((g) => `group-${g.id}`)}
             strategy={verticalListSortingStrategy}
           >
-            {groups.map((group) => {
+            {visibleGroups.map((group) => {
               const groupProjects = projectsByGroup.get(group.id) ?? [];
+              const expanded = searchQuery ? true : !group.collapsed;
+              const groupHasActivity = groupProjects.some((p) =>
+                tabs.some((t) => t.projectId === p.id && t.hasUnread),
+              );
               return (
                 <div key={group.id} className="project-group">
                   <GroupHeader
                     group={group}
                     projectCount={groupProjects.length}
                     editing={renamingGroup === group.id}
-                    onToggle={() => void toggleGroup(group.id)}
+                    expanded={expanded}
+                    hasActivity={groupHasActivity}
+                    onToggle={() => {
+                      if (!searchQuery) void toggleGroup(group.id);
+                    }}
+                    onAdd={() => onAddProject(group.id)}
                     onContextMenu={(x, y) =>
                       setCtx({ kind: "group", x, y, groupId: group.id })
                     }
@@ -429,18 +455,43 @@ export function ProjectList({ onAddProject }: ProjectListProps) {
                     }}
                     onCancelRename={() => setRenamingGroup(null)}
                   />
-                  {!group.collapsed && (
+                  {expanded && (
                     <SortableContext
                       items={groupProjects.map((p) => p.id)}
                       strategy={verticalListSortingStrategy}
                     >
-                      {groupProjects.map(renderProjectRow)}
+                      {groupProjects.map((p) =>
+                        renderProjectRow(p, { indented: true }),
+                      )}
                     </SortableContext>
                   )}
                 </div>
               );
             })}
           </SortableContext>
+
+          {ungrouped.length > 0 && (
+            <div
+              className={`project-list__ungrouped ${
+                visibleGroups.length > 0
+                  ? "project-list__ungrouped--divided"
+                  : ""
+              }`}
+            >
+              <SortableContext
+                items={ungrouped.map((p) => p.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                {ungrouped.map((p) => renderProjectRow(p))}
+              </SortableContext>
+            </div>
+          )}
+
+          {noResults && (
+            <div className="project-list__empty">
+              No projects match "{search}"
+            </div>
+          )}
 
           {autoCwdProjects.length > 0 && (
             <>
@@ -449,7 +500,7 @@ export function ProjectList({ onAddProject }: ProjectListProps) {
                 items={autoCwdProjects.map((p) => p.id)}
                 strategy={verticalListSortingStrategy}
               >
-                {autoCwdProjects.map(renderProjectRow)}
+                {autoCwdProjects.map((p) => renderProjectRow(p))}
               </SortableContext>
             </>
           )}
@@ -516,13 +567,7 @@ function renderDragOverlay(
     if (!group) return null;
     return (
       <div className="group-header group-header--dragging">
-        <span
-          className={`group-header__chevron ${
-            group.collapsed ? "group-header__chevron--collapsed" : ""
-          }`}
-        >
-          ▼
-        </span>
+        <span className="group-header__folder" aria-hidden />
         <span className="group-header__name">{group.name}</span>
       </div>
     );
@@ -535,7 +580,7 @@ function renderDragOverlay(
   } as CSSProperties;
   return (
     <div className="project-row" style={style}>
-      <span className="project-row__indicator" aria-hidden />
+      <span className="project-row__dot" aria-hidden />
       <span className="project-row__name">{project.name}</span>
     </div>
   );

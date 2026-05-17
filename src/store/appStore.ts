@@ -127,7 +127,7 @@ export const SETTINGS_LIMITS = {
 
 export const SIDEBAR_DEFAULT_WIDTH = 240;
 export const SIDEBAR_MIN_WIDTH = 180;
-export const SIDEBAR_MAX_WIDTH = 400;
+export const SIDEBAR_MAX_WIDTH = 360;
 
 type AppState = {
   tabs: Tab[];

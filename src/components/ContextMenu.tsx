@@ -6,6 +6,8 @@ export type MenuItem =
       label: string;
       onClick: () => void;
       disabled?: boolean;
+      danger?: boolean;
+      kbd?: string;
       separator?: false;
     }
   | { separator: true };
@@ -68,7 +70,9 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
             key={i}
             type="button"
             role="menuitem"
-            className="context-menu__item"
+            className={`context-menu__item ${
+              item.danger ? "context-menu__item--danger" : ""
+            }`}
             disabled={item.disabled}
             onClick={() => {
               if (item.disabled) return;
@@ -76,7 +80,10 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
               onClose();
             }}
           >
-            {item.label}
+            <span className="context-menu__label">{item.label}</span>
+            {item.kbd && (
+              <span className="context-menu__kbd">{item.kbd}</span>
+            )}
           </button>
         ),
       )}
