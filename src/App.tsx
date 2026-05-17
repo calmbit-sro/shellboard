@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
+import { TopBar } from "./components/TopBar";
 import { TabBar } from "./components/TabBar";
 import { TerminalHost } from "./components/TerminalHost";
 import { SettingsDialog } from "./components/SettingsDialog";
@@ -434,27 +435,30 @@ function App() {
 
   return (
     <div className="app">
-      {sidebarVisible && (
-        <Sidebar
-          onOpenSettings={() => setSettingsOpen(true)}
-          onAddProject={(groupId) => {
-            setAddProjectGroupId(groupId ?? null);
-            setAddProjectOpen(true);
-          }}
-        />
-      )}
-      <main className="app__main">
-        <TabBar />
-        <TerminalHost />
-        {!activeProjectId && (
-          <div className="app__empty">
-            {projectCount === 0
-              ? "No projects yet. Click + in the sidebar to add one."
-              : "Select a project from the sidebar."}
-          </div>
+      <TopBar onOpenPalette={() => setPaletteOpen(true)} />
+      <div className="app__body">
+        {sidebarVisible && (
+          <Sidebar
+            onOpenSettings={() => setSettingsOpen(true)}
+            onAddProject={(groupId) => {
+              setAddProjectGroupId(groupId ?? null);
+              setAddProjectOpen(true);
+            }}
+          />
         )}
-        <StatusBar onOpenShortcuts={() => setShortcutsOpen(true)} />
-      </main>
+        <main className="app__main">
+          <TabBar />
+          <TerminalHost />
+          {!activeProjectId && (
+            <div className="app__empty">
+              {projectCount === 0
+                ? "No projects yet. Click + in the sidebar to add one."
+                : "Select a project from the sidebar."}
+            </div>
+          )}
+          <StatusBar onOpenShortcuts={() => setShortcutsOpen(true)} />
+        </main>
+      </div>
       <SettingsDialog
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
