@@ -18,9 +18,14 @@ import { CSS } from "@dnd-kit/utilities";
 import { useAppStore, type Tab } from "../store/appStore";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { cwdLabel } from "../utils/path";
+import { Broadcast, Close, Plus, Search, Split, SplitH } from "./icons";
 import "./TabBar.css";
 
-export function TabBar() {
+type TabBarProps = {
+  onOpenGlobalSearch?: () => void;
+};
+
+export function TabBar({ onOpenGlobalSearch }: TabBarProps = {}) {
   const tabs = useAppStore((s) => s.tabs);
   const terminals = useAppStore((s) => s.terminals);
   const activeTabId = useAppStore((s) => s.activeTabId);
@@ -34,6 +39,7 @@ export function TabBar() {
   const closeOtherTabs = useAppStore((s) => s.closeOtherTabs);
   const closeTabsToRight = useAppStore((s) => s.closeTabsToRight);
   const duplicateTab = useAppStore((s) => s.duplicateTab);
+  const splitActiveTerminal = useAppStore((s) => s.splitActiveTerminal);
   const requestTabRename = useAppStore((s) => s.requestTabRename);
   const renamingTabId = useAppStore((s) => s.renamingTabId);
 
@@ -159,11 +165,42 @@ export function TabBar() {
         </SortableContext>
         <button
           type="button"
-          className="tab-bar__add"
+          className="tab-bar__ghost"
           aria-label="New tab"
+          title="New tab"
           onClick={() => void addTab()}
         >
-          +
+          <Plus size={12} />
+        </button>
+        <span className="tab-bar__spacer" />
+        {onOpenGlobalSearch && (
+          <button
+            type="button"
+            className="tab-bar__ghost"
+            aria-label="Search"
+            title="Search (⌘F)"
+            onClick={onOpenGlobalSearch}
+          >
+            <Search size={13} />
+          </button>
+        )}
+        <button
+          type="button"
+          className="tab-bar__ghost"
+          aria-label="Split horizontally"
+          title="Split horizontally"
+          onClick={() => void splitActiveTerminal("column")}
+        >
+          <SplitH size={13} />
+        </button>
+        <button
+          type="button"
+          className="tab-bar__ghost"
+          aria-label="Split vertically"
+          title="Split vertically"
+          onClick={() => void splitActiveTerminal("row")}
+        >
+          <Split size={13} />
         </button>
       </div>
       <DragOverlay dropAnimation={null}>
@@ -262,31 +299,29 @@ function SortableTab({
             <span className="tab__activity" aria-label="Activity" />
           )}
           {tab.broadcastInput && (
-            <span
+            <Broadcast
+              size={12}
               className="tab__broadcast"
-              title="Broadcast input is on"
               aria-label="Broadcast input"
-            >
-              ⚡
-            </span>
+            />
           )}
           <span className="tab__title" title={displayTitle}>
             {displayTitle}
           </span>
+          <button
+            type="button"
+            className="tab__close"
+            aria-label={`Close ${displayTitle}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <Close size={11} />
+          </button>
         </>
       )}
-      <button
-        type="button"
-        className="tab__close"
-        aria-label={`Close ${displayTitle}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          onClose();
-        }}
-        onPointerDown={(e) => e.stopPropagation()}
-      >
-        ×
-      </button>
     </div>
   );
 }
@@ -295,9 +330,6 @@ function TabClone({ displayTitle }: { displayTitle: string }) {
   return (
     <div className="tab tab--active" style={{ cursor: "grabbing" }}>
       <span className="tab__title">{displayTitle}</span>
-      <span className="tab__close" aria-hidden>
-        ×
-      </span>
     </div>
   );
 }

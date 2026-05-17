@@ -447,7 +447,7 @@ function App() {
           />
         )}
         <main className="app__main">
-          <TabBar />
+          <TabBar onOpenGlobalSearch={() => setGlobalSearchOpen(true)} />
           <TerminalHost />
           {!activeProjectId && (
             <div className="app__empty">
