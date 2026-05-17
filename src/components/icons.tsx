@@ -128,37 +128,15 @@ export function Chevron({
   );
 }
 
-export function Logo({
-  size = 20,
-  color = "currentColor",
-}: {
-  size?: number;
-  color?: string;
-}) {
+export function Logo({ size = 20 }: { size?: number; color?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 22 22" fill="none">
-      <rect
-        x="1.5"
-        y="1.5"
-        width="19"
-        height="19"
-        rx="5"
-        stroke={color}
-        strokeWidth="1.5"
-      />
-      <path
-        d="M6.5 8L9.5 11L6.5 14"
-        stroke={color}
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M11.5 14H15.5"
-        stroke={color}
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-    </svg>
+    <img
+      src="/logo.png"
+      width={size}
+      height={size}
+      alt="ShellBoard"
+      draggable={false}
+      style={{ display: "block", flexShrink: 0 }}
+    />
   );
 }
