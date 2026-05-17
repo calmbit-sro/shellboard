@@ -1,7 +1,36 @@
 import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "../store/appStore";
+import { findTheme } from "../utils/themes";
 import { Logo, Moon, Sun } from "./icons";
 import "./TopBar.css";
+
+/** Relative luminance of an #rrggbb / #rgb / rgba(...) color. Returns 0..1. */
+function colorLuminance(input: string | undefined): number {
+  if (!input) return 0;
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(input.trim());
+  if (m) {
+    const hex = m[1].length === 3
+      ? m[1].split("").map((c) => c + c).join("")
+      : m[1];
+    const r = parseInt(hex.slice(0, 2), 16) / 255;
+    const g = parseInt(hex.slice(2, 4), 16) / 255;
+    const b = parseInt(hex.slice(4, 6), 16) / 255;
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+  const rgba = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i.exec(input);
+  if (rgba) {
+    const r = Number(rgba[1]) / 255;
+    const g = Number(rgba[2]) / 255;
+    const b = Number(rgba[3]) / 255;
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+  return 0;
+}
+
+function isLightTheme(themeId: string): boolean {
+  const bg = findTheme(themeId).theme.background;
+  return colorLuminance(bg) > 0.5;
+}
 
 const IS_MAC =
   typeof navigator !== "undefined" &&
@@ -84,16 +113,33 @@ export function TopBar({ onOpenPalette }: TopBarProps) {
     }
   }, [chromeTheme, updateSettings]);
 
-  // When the user manually picks a terminal theme, remember it as the pref
-  // for the current chrome mode. Skip the very next change if it's just us
+  // When the user manually picks a terminal theme (from Settings or the
+  // palette), follow its lightness with the chrome and remember the choice
+  // as the pref for that chrome mode. Skip the next change if it's just us
   // applying the saved pref above.
   useEffect(() => {
     if (applyingPrefRef.current) {
       applyingPrefRef.current = false;
       return;
     }
+    const themeIsLight = isLightTheme(terminalTheme);
+    const targetChrome: "dark" | "light" = themeIsLight ? "light" : "dark";
+    if (targetChrome !== chromeTheme) {
+      // Save the pref under the *new* chrome mode so toggling back later
+      // restores this choice, not the placeholder it would have replaced.
+      termPrefsRef.current = {
+        ...termPrefsRef.current,
+        [targetChrome]: terminalTheme,
+      };
+      writeTermPrefs(termPrefsRef.current);
+      setChromeTheme(targetChrome);
+      return;
+    }
     if (termPrefsRef.current[chromeTheme] === terminalTheme) return;
-    termPrefsRef.current = { ...termPrefsRef.current, [chromeTheme]: terminalTheme };
+    termPrefsRef.current = {
+      ...termPrefsRef.current,
+      [chromeTheme]: terminalTheme,
+    };
     writeTermPrefs(termPrefsRef.current);
   }, [terminalTheme, chromeTheme]);
 
