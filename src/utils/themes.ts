@@ -8,6 +8,33 @@ export type ThemePreset = {
 
 export const THEMES: ThemePreset[] = [
   {
+    id: "shellboard",
+    name: "ShellBoard",
+    theme: {
+      background: "#181a1f",
+      foreground: "#e8e9ee",
+      cursor: "#8b7df7",
+      cursorAccent: "#181a1f",
+      selectionBackground: "rgba(139,125,247,0.25)",
+      black: "#3a3d46",
+      red: "#e57373",
+      green: "#6ec27a",
+      yellow: "#d8c66b",
+      blue: "#7aa8e8",
+      magenta: "#d98ec9",
+      cyan: "#6dc7c7",
+      white: "#e8e9ee",
+      brightBlack: "#5b6070",
+      brightRed: "#ff8a85",
+      brightGreen: "#8cd896",
+      brightYellow: "#e8d77a",
+      brightBlue: "#9ec0f0",
+      brightMagenta: "#e8a3d6",
+      brightCyan: "#88d6d6",
+      brightWhite: "#ffffff",
+    },
+  },
+  {
     id: "default",
     name: "Default",
     theme: {
@@ -225,7 +252,7 @@ export const THEMES: ThemePreset[] = [
   },
 ];
 
-export const DEFAULT_THEME_ID = "default";
+export const DEFAULT_THEME_ID = "shellboard";
 
 export function findTheme(id: string): ThemePreset {
   return THEMES.find((t) => t.id === id) ?? THEMES[0];
