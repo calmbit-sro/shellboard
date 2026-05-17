@@ -26,6 +26,14 @@
   min-width: 0;
 }
 
+/* On macOS the 78px traffic-lights spacer already provides enough left
+ * inset; the brand's own padding-left would push ShellBoard another 20px
+ * to the right, which looks awkwardly indented. Zero it out when the
+ * spacer is present. */
+.topbar__traffic-lights + .topbar__brand {
+  padding-left: 0;
+}
+
 .topbar__name {
   font-size: 12px;
   font-weight: 600;
