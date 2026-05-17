@@ -141,7 +141,7 @@ export function Logo({ size = 20 }: { size?: number; color?: string }) {
       style={{
         display: "block",
         flexShrink: 0,
-        filter: "hue-rotate(130deg) saturate(0.85)",
+        filter: "brightness(1.35) saturate(0.7)",
       }}
     />
   );
