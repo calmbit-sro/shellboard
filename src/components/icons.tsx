@@ -129,6 +129,8 @@ export function Chevron({
 }
 
 export function Logo({ size = 20 }: { size?: number; color?: string }) {
+  // The shipped PNG is green; rotate the hue to a chrome-friendly blue so
+  // the mark reads against the matte-dark sidebar / topbar surfaces.
   return (
     <img
       src="/logo.png"
@@ -136,7 +138,11 @@ export function Logo({ size = 20 }: { size?: number; color?: string }) {
       height={size}
       alt="ShellBoard"
       draggable={false}
-      style={{ display: "block", flexShrink: 0 }}
+      style={{
+        display: "block",
+        flexShrink: 0,
+        filter: "hue-rotate(130deg) saturate(0.85)",
+      }}
     />
   );
 }
