@@ -1,0 +1,125 @@
+/* ShellBoard redesign — design tokens
+ * Linear / Raycast aesthetic: matte dark neutrals with a soft violet accent.
+ * Light variant is paired via [data-theme="light"].
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;450;500;600;700&family=Geist+Mono:wght@400;450;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --font-ui: 'Geist', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Geist Mono', ui-monospace, monospace;
+
+  /* dark — default */
+  --bg-0: #0d0e11;          /* outermost / window */
+  --bg-1: #131418;          /* sidebar + status */
+  --bg-2: #181a1f;          /* main / terminal */
+  --bg-3: #1f2128;          /* hover surfaces */
+  --bg-4: #262932;          /* selected / elevated */
+  --bg-pop: #1b1d23;        /* popovers */
+
+  --line: #23262e;
+  --line-strong: #2e323c;
+  --line-faint: #1c1e24;
+
+  --fg: #e8e9ee;
+  --fg-2: #c4c7d1;
+  --muted: #8a8f9c;
+  --subtle: #5b6070;
+  --faint: #3d4150;
+
+  --accent: #8b7df7;        /* default violet */
+  --accent-strong: #a89bff;
+  --accent-soft: rgba(139, 125, 247, 0.14);
+  --accent-ring: rgba(139, 125, 247, 0.45);
+
+  --green:  #6ec27a;
+  --orange: #e8a564;
+  --red:    #e57373;
+  --yellow: #d8c66b;
+  --cyan:   #6dc7c7;
+  --blue:   #7aa8e8;
+  --pink:   #d98ec9;
+
+  /* per-project tint hues — used as tiny dot + 8% bg when selected */
+  --proj-green:   #6ec27a;
+  --proj-orange:  #e8a564;
+  --proj-violet:  #a896ee;
+  --proj-blue:    #7aa8e8;
+  --proj-pink:    #d98ec9;
+  --proj-cyan:    #6dc7c7;
+  --proj-yellow:  #d8c66b;
+  --proj-slate:   #8a8f9c;
+
+  --r-1: 4px;
+  --r-2: 6px;
+  --r-3: 8px;
+  --r-4: 10px;
+  --r-5: 14px;
+
+  --shadow-card: 0 1px 0 rgba(255,255,255,0.025) inset, 0 24px 60px -24px rgba(0,0,0,0.6), 0 6px 18px -8px rgba(0,0,0,0.4);
+  --shadow-pop:  0 1px 0 rgba(255,255,255,0.04) inset, 0 24px 80px -10px rgba(0,0,0,0.7), 0 8px 24px -10px rgba(0,0,0,0.5);
+}
+
+[data-theme="light"] {
+  --bg-0: #f5f4f1;
+  --bg-1: #efede9;
+  --bg-2: #ffffff;
+  --bg-3: #f3f1ee;
+  --bg-4: #e8e5e0;
+  --bg-pop: #ffffff;
+
+  --line: #e3e0db;
+  --line-strong: #d3cfc8;
+  --line-faint: #ede9e3;
+
+  --fg: #1c1d22;
+  --fg-2: #353841;
+  --muted: #6e7280;
+  --subtle: #8a8e98;
+  --faint: #b6b9c2;
+
+  --accent: #6a55e8;
+  --accent-strong: #5b46d8;
+  --accent-soft: rgba(106, 85, 232, 0.10);
+  --accent-ring: rgba(106, 85, 232, 0.35);
+
+  --green:  #3e9d56;
+  --orange: #c97a2b;
+  --red:    #c64949;
+  --yellow: #a98e15;
+  --cyan:   #2d8e8e;
+  --blue:   #3470c7;
+  --pink:   #b65aa0;
+
+  --shadow-card: 0 1px 0 rgba(0,0,0,0.02), 0 24px 60px -28px rgba(20,20,30,0.18), 0 6px 18px -8px rgba(20,20,30,0.08);
+  --shadow-pop:  0 1px 0 rgba(0,0,0,0.04), 0 24px 80px -16px rgba(20,20,30,0.25), 0 8px 24px -10px rgba(20,20,30,0.12);
+}
+
+/* artboard reset — every artboard root uses .sb-frame */
+.sb-frame {
+  font-family: var(--font-ui);
+  color: var(--fg);
+  background: var(--bg-0);
+  font-size: 13px;
+  line-height: 1.45;
+  letter-spacing: -0.005em;
+  font-feature-settings: "ss01", "ss02", "cv11";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.sb-frame *,
+.sb-frame *::before,
+.sb-frame *::after { box-sizing: border-box; }
+
+.sb-mono { font-family: var(--font-mono); font-feature-settings: "calt", "liga"; }
+
+/* tiny utility scrollbar */
+.sb-frame ::-webkit-scrollbar { width: 8px; height: 8px; }
+.sb-frame ::-webkit-scrollbar-track { background: transparent; }
+.sb-frame ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 4px; }
