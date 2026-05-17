@@ -23,6 +23,7 @@ export function TopBar({ onOpenPalette }: TopBarProps) {
   const activeProjectId = useAppStore((s) => s.activeProjectId);
   const projects = useAppStore((s) => s.projects);
   const activeProject = projects.find((p) => p.id === activeProjectId);
+  const updateSettings = useAppStore((s) => s.updateSettings);
 
   const [chromeTheme, setChromeTheme] = useState<"dark" | "light">(
     readSavedChromeTheme,
@@ -39,7 +40,16 @@ export function TopBar({ onOpenPalette }: TopBarProps) {
     } catch {
       /* ignore */
     }
-  }, [chromeTheme]);
+    // Keep the terminal theme aligned with the chrome when the user is on
+    // one of the ShellBoard presets. Runs at mount too, so a saved
+    // chrome=light hydrates the matching shellboard-light terminal.
+    const current = useAppStore.getState().settings.terminalTheme;
+    if (chromeTheme === "light" && current === "shellboard") {
+      void updateSettings({ terminalTheme: "shellboard-light" });
+    } else if (chromeTheme === "dark" && current === "shellboard-light") {
+      void updateSettings({ terminalTheme: "shellboard" });
+    }
+  }, [chromeTheme, updateSettings]);
 
   const toggleChromeTheme = () => {
     setChromeTheme((t) => (t === "dark" ? "light" : "dark"));

@@ -8,6 +8,33 @@ export type ThemePreset = {
 
 export const THEMES: ThemePreset[] = [
   {
+    id: "shellboard-light",
+    name: "ShellBoard Light",
+    theme: {
+      background: "#ffffff",
+      foreground: "#1c1d22",
+      cursor: "#6a55e8",
+      cursorAccent: "#ffffff",
+      selectionBackground: "rgba(106,85,232,0.20)",
+      black: "#1c1d22",
+      red: "#c64949",
+      green: "#3e9d56",
+      yellow: "#a98e15",
+      blue: "#3470c7",
+      magenta: "#b65aa0",
+      cyan: "#2d8e8e",
+      white: "#353841",
+      brightBlack: "#6e7280",
+      brightRed: "#d65c5c",
+      brightGreen: "#52b06b",
+      brightYellow: "#c2a432",
+      brightBlue: "#4b85d8",
+      brightMagenta: "#cc73b8",
+      brightCyan: "#3fa3a3",
+      brightWhite: "#1c1d22",
+    },
+  },
+  {
     id: "shellboard",
     name: "ShellBoard",
     theme: {
