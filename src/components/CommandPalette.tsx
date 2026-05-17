@@ -3,6 +3,7 @@ import { Command } from "cmdk";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { useAppStore } from "../store/appStore";
 import { THEMES } from "../utils/themes";
+import { Search } from "./icons";
 import "./CommandPalette.css";
 
 type CommandPaletteProps = {
@@ -65,11 +66,15 @@ export function CommandPalette({
     <div className="palette-backdrop">
       <div ref={listRef} className="palette">
         <Command label="Command palette" loop>
-          <Command.Input
-            autoFocus
-            placeholder="Type a command…"
-            className="palette__input"
-          />
+          <div className="palette__header">
+            <Search size={15} className="palette__icon" />
+            <Command.Input
+              autoFocus
+              placeholder="Type a command…"
+              className="palette__input"
+            />
+            <span className="palette__esc">esc</span>
+          </div>
           <Command.List className="palette__list">
             <Command.Empty className="palette__empty">
               No matching commands.
@@ -371,6 +376,12 @@ export function CommandPalette({
               </Command.Item>
             </Command.Group>
           </Command.List>
+          <div className="palette__footer">
+            <span>↑ ↓ navigate</span>
+            <span>↵ select</span>
+            <span className="palette__footer-spacer" />
+            <span>esc close</span>
+          </div>
         </Command>
       </div>
     </div>

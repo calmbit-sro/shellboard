@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../store/appStore";
 import { collectLeaves } from "../utils/mosaic";
 import { listTerminals, getTerminal } from "../utils/terminalRegistry";
+import { Search } from "./icons";
 import "./GlobalSearch.css";
 
 type Hit = {
@@ -149,30 +150,34 @@ export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
   return (
     <div className="gsearch-backdrop">
       <div ref={listRef} className="gsearch">
-        <input
-          autoFocus
-          type="text"
-          placeholder="Search across all terminals…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "ArrowDown") {
-              e.preventDefault();
-              setSelectedIdx((i) => Math.min(hits.length - 1, i + 1));
-            } else if (e.key === "ArrowUp") {
-              e.preventDefault();
-              setSelectedIdx((i) => Math.max(0, i - 1));
-            } else if (e.key === "Enter") {
-              e.preventDefault();
-              const hit = hits[selectedIdx];
-              if (hit) jumpTo(hit);
-            } else if (e.key === "Escape") {
-              e.preventDefault();
-              onClose();
-            }
-          }}
-          className="gsearch__input"
-        />
+        <div className="gsearch__header">
+          <Search size={15} className="gsearch__icon" />
+          <input
+            autoFocus
+            type="text"
+            placeholder="Search across all terminals…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setSelectedIdx((i) => Math.min(hits.length - 1, i + 1));
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setSelectedIdx((i) => Math.max(0, i - 1));
+              } else if (e.key === "Enter") {
+                e.preventDefault();
+                const hit = hits[selectedIdx];
+                if (hit) jumpTo(hit);
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                onClose();
+              }
+            }}
+            className="gsearch__input"
+          />
+          <span className="gsearch__esc">esc</span>
+        </div>
         <div className="gsearch__list">
           {!query && (
             <div className="gsearch__hint">
@@ -208,6 +213,12 @@ export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
               </span>
             </button>
           ))}
+        </div>
+        <div className="gsearch__footer">
+          <span>↵ jump to tab</span>
+          <span>⌘↵ open in new split</span>
+          <span className="gsearch__footer-spacer" />
+          <span>scrollback included</span>
         </div>
       </div>
     </div>

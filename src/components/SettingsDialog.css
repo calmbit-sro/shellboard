@@ -1,51 +1,63 @@
 .settings {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 22px;
+  font-family: var(--font-ui);
+  color: var(--fg);
 }
 
 .settings__section {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .settings__heading {
   margin: 0;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.6px;
   text-transform: uppercase;
-  color: #909090;
+  color: var(--subtle);
 }
 
 .settings__field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-faint);
+}
+
+.settings__field:first-of-type {
+  border-top: none;
+  padding-top: 0;
 }
 
 .settings__field label {
-  font-size: 12px;
-  color: #b0b0b0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
 }
 
 .settings__field input[type="text"],
 .settings__field input[type="number"],
 .settings__field select {
-  background: #1e1e1e;
-  color: #ffffff;
-  border: 1px solid #444;
-  border-radius: 4px;
-  padding: 6px 8px;
+  background: var(--bg-3);
+  color: var(--fg);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  padding: 0 10px;
+  height: 30px;
   font-size: 13px;
   font-family: inherit;
+  outline: none;
 }
 
 .settings__field input:focus,
 .settings__field select:focus {
-  outline: none;
-  border-color: #0a84ff;
+  border-color: var(--accent-ring);
+  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 .settings__field input[type="number"] {
@@ -55,7 +67,7 @@
 .settings__text {
   width: 100%;
   box-sizing: border-box;
-  font-family: "Menlo", Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
 .settings__swatches {
@@ -66,9 +78,9 @@
 
 .settings__swatch {
   width: 18px;
-  height: 18px;
+  height: 32px;
   border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--line-faint);
 }
 
 .settings__field--check {
@@ -78,77 +90,81 @@
 .settings__check {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: #e0e0e0;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--fg);
   cursor: pointer;
 }
 
 .settings__check input[type="checkbox"] {
   margin: 0;
   cursor: pointer;
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
 }
 
 .settings__hint {
   margin: 0;
-  font-size: 11px;
-  color: #909090;
-  line-height: 1.4;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
 }
 
 .settings__hint code {
-  background: rgba(255, 255, 255, 0.08);
-  padding: 0 3px;
+  background: var(--bg-3);
+  padding: 0 4px;
   border-radius: 3px;
-  font-family: "Menlo", Consolas, monospace;
+  font-family: var(--font-mono);
+  font-size: 11px;
 }
 
 .settings__footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-top: 1px solid #1a1a1a;
+  border-top: 1px solid var(--line-faint);
   padding-top: 14px;
   margin-top: 4px;
+  gap: 8px;
 }
 
-.settings__reset,
-.settings__done {
-  font: inherit;
-  font-size: 12px;
-  padding: 6px 16px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.settings__reset,
-.settings__about {
+.settings__about,
+.settings__reset {
   background: transparent;
-  border: 1px solid #444;
-  color: #b0b0b0;
+  border: 1px solid var(--line-strong);
+  color: var(--fg-2);
   font: inherit;
   font-size: 12px;
-  padding: 6px 16px;
-  border-radius: 4px;
+  padding: 6px 14px;
+  border-radius: 6px;
   cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
 .settings__about {
   margin-right: auto;
 }
 
-.settings__reset:hover,
-.settings__about:hover {
-  background: #3a3a3a;
-  color: #e0e0e0;
+.settings__about:hover,
+.settings__reset:hover {
+  background: var(--bg-3);
+  color: var(--fg);
 }
 
 .settings__done {
-  background: #0a84ff;
-  border: 1px solid #0a84ff;
-  color: #ffffff;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s ease;
 }
 
 .settings__done:hover {
-  background: #0a78e5;
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
 }
