@@ -32,10 +32,6 @@ function isLightTheme(themeId: string): boolean {
   return colorLuminance(bg) > 0.5;
 }
 
-const IS_MAC =
-  typeof navigator !== "undefined" &&
-  /Mac|iPhone|iPad/.test(navigator.platform);
-
 const CHROME_THEME_KEY = "shellboard.chromeTheme";
 const TERM_PREF_KEY = "shellboard.terminalThemeByChrome";
 
@@ -149,7 +145,6 @@ export function TopBar({ onOpenPalette }: TopBarProps) {
 
   return (
     <div className="topbar" data-tauri-drag-region>
-      {IS_MAC && <div className="topbar__traffic-lights" aria-hidden />}
       <div className="topbar__brand" data-tauri-drag-region>
         <Logo size={16} color="var(--accent-strong)" />
         <span className="topbar__name">ShellBoard</span>
