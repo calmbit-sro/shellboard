@@ -89,6 +89,12 @@ export function TopBar({ onOpenPalette }: TopBarProps) {
   // doesn't keep overwriting itself.
   const applyingPrefRef = useRef(false);
 
+  // Idempotent: just keeps the DOM attribute and the chrome-mode pointer in
+  // localStorage in sync with state. NEVER calls updateSettings here —
+  // App.tsx hydrates the store from disk asynchronously, and any mount-time
+  // (or React-StrictMode double-fired) settings write would clobber the
+  // user's saved font/size with DEFAULT_SETTINGS. Theme restoration on
+  // chrome toggle is handled inline in toggleChromeTheme instead.
   useEffect(() => {
     if (chromeTheme === "light") {
       document.documentElement.setAttribute("data-theme", "light");
@@ -100,14 +106,7 @@ export function TopBar({ onOpenPalette }: TopBarProps) {
     } catch {
       /* ignore */
     }
-    // Restore the saved terminal theme for this chrome mode. Runs at mount
-    // too, so a saved chrome=light hydrates the matching light terminal.
-    const desired = termPrefsRef.current[chromeTheme];
-    if (desired && useAppStore.getState().settings.terminalTheme !== desired) {
-      applyingPrefRef.current = true;
-      void updateSettings({ terminalTheme: desired });
-    }
-  }, [chromeTheme, updateSettings]);
+  }, [chromeTheme]);
 
   // When the user manually picks a terminal theme (from Settings or the
   // palette), follow its lightness with the chrome and remember the choice
@@ -140,13 +139,23 @@ export function TopBar({ onOpenPalette }: TopBarProps) {
   }, [terminalTheme, chromeTheme]);
 
   const toggleChromeTheme = () => {
-    setChromeTheme((t) => (t === "dark" ? "light" : "dark"));
+    const next = chromeTheme === "dark" ? "light" : "dark";
+    setChromeTheme(next);
+    // Restore the user's last terminal theme for the target chrome mode.
+    // Done here (not in useEffect) so it can never fire on mount or under
+    // StrictMode's double-effect — both of those would race with App.tsx's
+    // async hydrate and overwrite the saved settings file with defaults.
+    const desired = termPrefsRef.current[next];
+    if (desired && useAppStore.getState().settings.terminalTheme !== desired) {
+      applyingPrefRef.current = true;
+      void updateSettings({ terminalTheme: desired });
+    }
   };
 
   return (
     <div className="topbar" data-tauri-drag-region>
       <div className="topbar__brand" data-tauri-drag-region>
-        <Logo size={16} color="var(--accent-strong)" />
+        <Logo size={13} color="var(--accent-strong)" />
         <span className="topbar__name">ShellBoard</span>
         {activeProject && (
           <>
@@ -163,7 +172,7 @@ export function TopBar({ onOpenPalette }: TopBarProps) {
         aria-label={chromeTheme === "dark" ? "Switch to light" : "Switch to dark"}
         title={chromeTheme === "dark" ? "Light mode" : "Dark mode"}
       >
-        {chromeTheme === "dark" ? <Moon size={13} /> : <Sun size={13} />}
+        {chromeTheme === "dark" ? <Moon size={11} /> : <Sun size={11} />}
       </button>
       <button
         type="button"
