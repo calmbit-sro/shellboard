@@ -66,9 +66,13 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
     xterm.loadAddon(search);
     const serialize = new SerializeAddon();
     xterm.loadAddon(serialize);
-    // Clickable URLs — Cmd/Ctrl + click opens in the system browser.
+    // Clickable URLs — only Cmd (macOS) / Ctrl (others) + click opens in the
+    // system browser. Plain click is a no-op so the user can drag-select a
+    // URL to copy without it being yanked away into the browser.
     xterm.loadAddon(
-      new WebLinksAddon((_event, uri) => {
+      new WebLinksAddon((event, uri) => {
+        const modifier = IS_MAC ? event.metaKey : event.ctrlKey;
+        if (!modifier) return;
         void openUrl(uri).catch(() => {});
       }),
     );

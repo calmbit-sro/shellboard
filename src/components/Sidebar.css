@@ -164,8 +164,8 @@
 
 .project-list__separator {
   height: 1px;
-  margin: 8px 4px 4px;
-  background: var(--line-faint);
+  margin: 12px 4px 10px;
+  background: var(--line-strong);
 }
 
 .project-list__empty {
@@ -208,6 +208,17 @@
 .group-header__folder {
   color: var(--muted);
   flex-shrink: 0;
+}
+
+.group-header__icon {
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
 }
 
 .group-header__name {
