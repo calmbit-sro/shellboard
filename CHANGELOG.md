@@ -5,6 +5,88 @@ All notable changes to Shellboard will be documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] — 2026-05-18
+
+A full visual overhaul plus several quality-of-life features. Settings on
+disk stay compatible with 1.x — you can downgrade and re-upgrade without
+losing your projects, snippets, or session.
+
+### Added
+
+- **ShellBoard chrome redesign.** New design-tokens stylesheet drives the
+  sidebar, tab bar, status bar, top bar, panels, and every overlay
+  (command palette, global search, settings, modals). Focus-visible rings
+  are unified across surfaces.
+- **Top bar with breadcrumb.** Logo · ShellBoard · / · *active project*
+  on the left; light/dark chrome toggle and a ⌘K hint pill on the right.
+  Slim 26 px strip — still doubles as the window drag region.
+- **ShellBoard theme preset** as the new default, plus a paired
+  **ShellBoard Light** variant. The topbar light/dark toggle remembers a
+  separate terminal theme per chrome mode, and the chrome auto-follows
+  the active terminal theme's background lightness.
+- **Recent terminals in the command palette.** Top of the list shows up
+  to five most-recently focused terminals across projects/tabs;
+  selecting one jumps directly to that project + tab + panel.
+- **Customisable group icons.** Right-click a group header → *Set icon…*
+  to replace the folder glyph with any emoji or character.
+- **Copy + Paste in the panel right-click menu.** Useful when a selection
+  contains a URL you'd otherwise accidentally open by clicking.
+- **Cmd/Ctrl+K opens the command palette**, matching the visible hint in
+  the top bar. Cmd/Ctrl+Shift+P remains as an alias.
+- **Cmd/Ctrl+Shift+Arrow splits the focused panel** in the arrow's
+  direction (all four sides). Mirrors Cmd/Ctrl+Alt+Arrow for focus —
+  Alt = go there, Shift = create there. Cmd/Ctrl+D and Cmd/Ctrl+Shift+D
+  remain as iTerm2-style aliases for right/down.
+- **Show / hide group project count.** Settings → General toggle for the
+  small badge next to each group header in the sidebar.
+- **Show / hide panel header.** Settings → Terminal toggle for the thin
+  shell · cwd · running strip above each split.
+- **New settings dialog.** Railed layout with search, larger surface,
+  keyboard-friendly. Same settings shape on disk — old configs load as-is.
+
+### Changed
+
+- **URL clicks now require Cmd / Ctrl modifier.** Plain click on a link
+  no longer launches the browser, so drag-selecting a URL to copy it
+  works as expected. Matches iTerm2 / macOS Terminal behaviour.
+- **Stronger sidebar separator** between regular projects and the auto-cwd
+  project group (`Cmd/Ctrl+N` quick-adds) — moved from `--line-faint` to
+  `--line-strong` with more vertical breathing room.
+- **Tab bar pills** restyled with ghost search and split controls on the
+  active tab.
+- **Status bar** restyled with stroke icons and middle-truncated branch
+  names that don't push the cwd off-screen on long branches.
+
+### Fixed
+
+- **Saved font / size / scrollback reset on restart.** The TopBar's
+  chrome-mode effect was firing before App.tsx finished hydrating
+  settings from disk, then writing `DEFAULT_SETTINGS` + the saved
+  terminal theme back to disk and silently wiping the user's font, font
+  size, and scrollback. The chrome → terminal-theme restoration now
+  runs only inside the explicit toggle handler, never from a mount-time
+  effect, so neither React StrictMode nor first-render races can
+  clobber the file.
+- **Command palette didn't close on Escape.** The cmdk library doesn't
+  manage open/close state itself; added a capture-phase Escape handler
+  on the palette so it dismisses regardless of which control has focus.
+- **macOS traffic-lights gutter (78 px dead space).** Title-bar overlay
+  mode isn't enabled, so the spacer was just pushing the brand 78 px
+  to the right — removed. Brand padding adjusted accordingly.
+- **Terminal padding offset.** Removed inner padding on
+  `.terminal-container` that left a thin gap at the top/left of each
+  split; `app__main` gained `min-height` so the mosaic always fills
+  the available space.
+
+### Compatibility notes
+
+- `shellboard.json`, `session.json`, and `buffers.json` are read by 2.0
+  the same way 1.x wrote them. New fields (`showGroupCount`,
+  `ProjectGroup.icon`) fall back to sensible defaults when absent.
+- `Cmd/Ctrl+K` previously cleared the focused terminal (undocumented).
+  The shell's native `Ctrl+L` and the `clear` command continue to work
+  for that purpose.
+
 ## [1.4.0] — 2026-05-04
 
 ### Fixed
