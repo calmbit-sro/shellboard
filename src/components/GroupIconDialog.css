@@ -1,0 +1,111 @@
+.group-icon-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-ui);
+}
+
+.group-icon-dialog {
+  width: 320px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--fg);
+}
+
+.group-icon-dialog__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+  letter-spacing: -0.1px;
+}
+
+.group-icon-dialog__body {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.group-icon-dialog__preview {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.group-icon-dialog__input {
+  flex: 1;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  height: 28px;
+  padding: 0 8px;
+  color: var(--fg);
+  font-size: 12px;
+  outline: none;
+}
+
+.group-icon-dialog__input:focus {
+  border-color: var(--accent-strong);
+  box-shadow: 0 0 0 2px var(--accent-ring);
+}
+
+.group-icon-dialog__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.group-icon-dialog__spacer {
+  flex: 1;
+}
+
+.group-icon-dialog__btn {
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: var(--bg-3);
+  color: var(--fg);
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.group-icon-dialog__btn--ghost {
+  background: transparent;
+  color: var(--muted);
+}
+
+.group-icon-dialog__btn--ghost:hover {
+  background: var(--bg-3);
+  color: var(--fg);
+}
+
+.group-icon-dialog__btn--primary {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: #fff;
+}
+
+.group-icon-dialog__btn--primary:hover {
+  filter: brightness(1.08);
+}

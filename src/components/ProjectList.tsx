@@ -23,6 +23,7 @@ import { GroupHeader } from "./GroupHeader";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { Modal } from "./Modal";
 import { ColorPicker } from "./ColorPicker";
+import { GroupIconDialog } from "./GroupIconDialog";
 import { SnippetsDialog } from "./SnippetsDialog";
 import { cwdLabel } from "../utils/path";
 
@@ -65,6 +66,7 @@ export function ProjectList({ onAddProject, search = "" }: ProjectListProps) {
   const moveProjectToGroup = useAppStore((s) => s.moveProjectToGroup);
   const toggleGroup = useAppStore((s) => s.toggleGroup);
   const renameGroup = useAppStore((s) => s.renameGroup);
+  const setGroupIcon = useAppStore((s) => s.setGroupIcon);
   const removeGroup = useAppStore((s) => s.removeGroup);
   const externalRenamingProjectId = useAppStore((s) => s.renamingProjectId);
   const requestProjectRename = useAppStore((s) => s.requestProjectRename);
@@ -75,10 +77,15 @@ export function ProjectList({ onAddProject, search = "" }: ProjectListProps) {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renamingGroup, setRenamingGroup] = useState<string | null>(null);
   const [colorEditId, setColorEditId] = useState<string | null>(null);
+  const [iconEditGroupId, setIconEditGroupId] = useState<string | null>(null);
   const [snippetsProjectId, setSnippetsProjectId] = useState<string | null>(
     null,
   );
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
+
+  const iconEditGroup: ProjectGroup | undefined = iconEditGroupId
+    ? groups.find((g) => g.id === iconEditGroupId)
+    : undefined;
 
   const colorEditProject: Project | undefined = colorEditId
     ? projects.find((p) => p.id === colorEditId)
@@ -215,6 +222,10 @@ export function ProjectList({ onAddProject, search = "" }: ProjectListProps) {
       {
         label: "Rename",
         onClick: () => setRenamingGroup(groupId),
+      },
+      {
+        label: group.icon ? "Change icon…" : "Set icon…",
+        onClick: () => setIconEditGroupId(groupId),
       },
       {
         label: "Add project here",
@@ -544,6 +555,16 @@ export function ProjectList({ onAddProject, search = "" }: ProjectListProps) {
       <SnippetsDialog
         projectId={snippetsProjectId}
         onClose={() => setSnippetsProjectId(null)}
+      />
+
+      <GroupIconDialog
+        open={!!iconEditGroup}
+        initialIcon={iconEditGroup?.icon}
+        groupName={iconEditGroup?.name ?? ""}
+        onSave={(icon) => {
+          if (iconEditGroupId) void setGroupIcon(iconEditGroupId, icon);
+        }}
+        onClose={() => setIconEditGroupId(null)}
       />
     </>
   );

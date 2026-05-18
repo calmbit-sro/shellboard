@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { ProjectGroup } from "../store/appStore";
+import { useAppStore, type ProjectGroup } from "../store/appStore";
 import { Chevron, Folder, Plus } from "./icons";
 
 type GroupHeaderProps = {
@@ -29,6 +29,7 @@ export function GroupHeader({
   onCommitRename,
   onCancelRename,
 }: GroupHeaderProps) {
+  const showGroupCount = useAppStore((s) => s.settings.showGroupCount);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [draft, setDraft] = useState(group.name);
 
@@ -74,7 +75,13 @@ export function GroupHeader({
       }}
     >
       <Chevron open={expanded} />
-      <Folder size={11} className="group-header__folder" />
+      {group.icon ? (
+        <span className="group-header__icon" aria-hidden>
+          {group.icon}
+        </span>
+      ) : (
+        <Folder size={11} className="group-header__folder" />
+      )}
       {editing ? (
         <input
           ref={inputRef}
@@ -106,7 +113,9 @@ export function GroupHeader({
           {hasActivity && (
             <span className="group-header__activity" aria-label="Activity" />
           )}
-          <span className="group-header__count">{projectCount}</span>
+          {showGroupCount && (
+            <span className="group-header__count">{projectCount}</span>
+          )}
           <button
             type="button"
             className="group-header__add"

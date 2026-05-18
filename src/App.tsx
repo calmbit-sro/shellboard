@@ -26,7 +26,6 @@ import {
   PersistenceKeys,
 } from "./utils/persistence";
 import { findTheme } from "./utils/themes";
-import { getTerminal } from "./utils/terminalRegistry";
 import { firstLeafOf } from "./utils/mosaic";
 import { randomProjectColor } from "./components/ColorPicker";
 import { cwdLabel } from "./utils/path";
@@ -306,7 +305,18 @@ function App() {
         return;
       }
 
-      // Cmd/Ctrl+Shift+P — open command palette
+      // Cmd/Ctrl+K (and the Cmd+Shift+P alias) — open command palette.
+      // Cmd+K matches the visible hint pill in the topbar; Shift+P is the
+      // VS Code muscle-memory alias.
+      if (
+        (e.key === "k" || e.key === "K") &&
+        !e.shiftKey &&
+        !e.altKey
+      ) {
+        e.preventDefault();
+        setPaletteOpen(true);
+        return;
+      }
       if ((e.key === "p" || e.key === "P") && e.shiftKey && !e.altKey) {
         e.preventDefault();
         setPaletteOpen(true);
@@ -317,17 +327,6 @@ function App() {
       if ((e.key === "b" || e.key === "B") && !e.shiftKey && !e.altKey) {
         e.preventDefault();
         void store.toggleSidebar();
-        return;
-      }
-
-      // Cmd/Ctrl+K — clear focused terminal (scrollback preserved).
-      if ((e.key === "k" || e.key === "K") && !e.shiftKey && !e.altKey) {
-        const tab = store.tabs.find((t) => t.id === store.activeTabId);
-        const leafId = tab?.focusedLeafId;
-        if (leafId) {
-          e.preventDefault();
-          getTerminal(leafId)?.clear();
-        }
         return;
       }
 
@@ -400,6 +399,32 @@ function App() {
         if (e.key === "ArrowDown") {
           e.preventDefault();
           store.moveFocus("down");
+          return;
+        }
+      }
+
+      // Cmd/Ctrl+Shift+Arrow — split the focused panel in the arrow's
+      // direction. Mirrors Cmd+Alt+Arrow (move focus): Alt = go there,
+      // Shift = create there. Cmd+D / Cmd+Shift+D remain as iTerm2 aliases
+      // for the two most-used splits (right / down).
+      if (e.shiftKey && !e.altKey) {
+        const side =
+          e.key === "ArrowLeft"
+            ? "left"
+            : e.key === "ArrowRight"
+              ? "right"
+              : e.key === "ArrowUp"
+                ? "up"
+                : e.key === "ArrowDown"
+                  ? "down"
+                  : null;
+        if (side) {
+          e.preventDefault();
+          const tab = store.tabs.find((t) => t.id === store.activeTabId);
+          const anchor =
+            tab?.focusedLeafId ??
+            (tab?.mosaic ? firstLeafOf(tab.mosaic) : null);
+          if (anchor) void store.splitPanel(anchor, side);
           return;
         }
       }

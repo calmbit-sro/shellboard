@@ -78,6 +78,9 @@ export type ProjectGroup = {
   id: string;
   name: string;
   collapsed: boolean;
+  /** Optional user-set icon (emoji or single grapheme) rendered in place
+   * of the default folder glyph. Absent on older configs. */
+  icon?: string;
 };
 
 export type AddTabOptions = {
@@ -106,6 +109,9 @@ export type Settings = {
   /** Show the 22px panel header above each terminal split (shell · cwd ·
    * running indicator). Toggle off for absolute-minimum chrome. */
   showPanelHeader: boolean;
+  /** Show the project-count badge next to each group header in the
+   * sidebar. Off = the chip is hidden, name takes the freed space. */
+  showGroupCount: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -121,6 +127,7 @@ export const DEFAULT_SETTINGS: Settings = {
   checkForUpdatesOnStartup: true,
   persistScrollback: true,
   showPanelHeader: true,
+  showGroupCount: true,
 };
 
 export const SETTINGS_LIMITS = {
@@ -175,6 +182,10 @@ type AppState = {
     url: string;
     notes: string;
   } | null;
+  /** MRU list of focused leaf (PTY session) IDs across all tabs/projects.
+   * Session-only — not persisted. Used by the command palette to surface
+   * recently-used terminals as quick jump targets. Most recent first. */
+  recentLeafIds: string[];
 
   hydrate: (data: {
     projects?: Project[];
@@ -197,6 +208,7 @@ type AppState = {
 
   addGroup: (name: string) => Promise<ProjectGroup>;
   renameGroup: (id: string, name: string) => Promise<void>;
+  setGroupIcon: (id: string, icon: string | null) => Promise<void>;
   removeGroup: (id: string) => Promise<void>;
   toggleGroup: (id: string) => Promise<void>;
   moveProjectToGroup: (projectId: string, groupId: string | null) => Promise<void>;
@@ -224,6 +236,10 @@ type AppState = {
   focusPanel: (leafId: string) => void;
   moveFocus: (dir: FocusDir) => void;
   handleTerminalExit: (terminalId: string) => Promise<void>;
+  /** Jump to a specific terminal regardless of which tab/project it lives
+   * in. Used by the command palette's "Recent terminals" list. No-op if
+   * the leaf is no longer alive. */
+  revealTerminal: (leafId: string) => Promise<void>;
 
   addProject: (
     p: Omit<Project, "id" | "createdAt" | "groupId"> & {
@@ -341,6 +357,10 @@ function clampSettings(s: Partial<Settings>): Settings {
       typeof s.showPanelHeader === "boolean"
         ? s.showPanelHeader
         : DEFAULT_SETTINGS.showPanelHeader,
+    showGroupCount:
+      typeof s.showGroupCount === "boolean"
+        ? s.showGroupCount
+        : DEFAULT_SETTINGS.showGroupCount,
   };
 }
 
@@ -349,6 +369,13 @@ function uuid(): string {
     return crypto.randomUUID();
   }
   return `tab-${Math.random().toString(36).slice(2)}-${Date.now()}`;
+}
+
+const RECENT_CAP = 20;
+
+function bumpRecent(list: string[], id: string): string[] {
+  const next = [id, ...list.filter((x) => x !== id)];
+  return next.length > RECENT_CAP ? next.slice(0, RECENT_CAP) : next;
 }
 
 async function spawnTerminal(
@@ -399,6 +426,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   pendingProjectRestores: {},
   pendingBuffers: {},
   updateInfo: null,
+  recentLeafIds: [],
 
   hydrate: (data) =>
     set((state) => {
@@ -648,6 +676,9 @@ export const useAppStore = create<AppState>()((set, get) => ({
       tabs: state.tabs.map((t) =>
         t.id === tabId && t.hasUnread ? { ...t, hasUnread: false } : t,
       ),
+      recentLeafIds: tab.focusedLeafId
+        ? bumpRecent(state.recentLeafIds, tab.focusedLeafId)
+        : state.recentLeafIds,
     }));
   },
 
@@ -835,6 +866,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
       tabs: state.tabs.map((t) =>
         t.id === tab.id ? { ...t, focusedLeafId: leafId } : t,
       ),
+      recentLeafIds: bumpRecent(state.recentLeafIds, leafId),
     }));
   },
 
@@ -848,6 +880,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
       tabs: state.tabs.map((t) =>
         t.id === tab.id ? { ...t, focusedLeafId: target } : t,
       ),
+      recentLeafIds: bumpRecent(state.recentLeafIds, target),
     }));
   },
 
@@ -891,8 +924,34 @@ export const useAppStore = create<AppState>()((set, get) => ({
             : t,
         ),
         terminals: remainingTerminals,
+        recentLeafIds: state.recentLeafIds.filter((id) => id !== terminalId),
       };
     });
+  },
+
+  revealTerminal: async (leafId) => {
+    const state = get();
+    if (!state.terminals[leafId]) return;
+    const tab = state.tabs.find(
+      (t) => t.mosaic && collectLeaves(t.mosaic).includes(leafId),
+    );
+    if (!tab) return;
+    if (state.activeProjectId !== tab.projectId) {
+      await get().setActiveProject(tab.projectId);
+    }
+    set((s) => ({
+      activeTabId: tab.id,
+      lastActiveTabByProject: {
+        ...s.lastActiveTabByProject,
+        [tab.projectId]: tab.id,
+      },
+      tabs: s.tabs.map((t) =>
+        t.id === tab.id
+          ? { ...t, focusedLeafId: leafId, hasUnread: false }
+          : t,
+      ),
+      recentLeafIds: bumpRecent(s.recentLeafIds, leafId),
+    }));
   },
 
   addProject: async (p) => {
@@ -1066,6 +1125,20 @@ export const useAppStore = create<AppState>()((set, get) => ({
     const groups = get().groups.map((g) =>
       g.id === id ? { ...g, name: trimmed } : g,
     );
+    set({ groups });
+    await saveGroups(groups);
+  },
+
+  setGroupIcon: async (id, icon) => {
+    const trimmed = (icon ?? "").trim();
+    const groups = get().groups.map((g) => {
+      if (g.id !== id) return g;
+      if (trimmed) return { ...g, icon: trimmed };
+      // Empty / null clears the field — drop the key so the JSON doesn't
+      // carry `"icon": ""` indefinitely.
+      const { icon: _drop, ...rest } = g;
+      return rest;
+    });
     set({ groups });
     await saveGroups(groups);
   },

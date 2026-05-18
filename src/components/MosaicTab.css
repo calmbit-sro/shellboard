@@ -62,10 +62,11 @@
 }
 
 .panel--focused {
-  border-color: var(--accent-ring);
+  border-color: color-mix(in srgb, var(--accent-ring) 100%, #ffffff 35%);
   box-shadow:
     0 0 0 3px var(--accent-soft),
-    0 1px 0 rgba(255, 255, 255, 0.025) inset;
+    0 0 12px color-mix(in srgb, var(--accent-ring) 60%, transparent),
+    0 1px 0 rgba(255, 255, 255, 0.04) inset;
 }
 
 .panel__body {

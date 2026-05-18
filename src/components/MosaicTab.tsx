@@ -1,12 +1,21 @@
 import { useCallback, useState } from "react";
 import { Mosaic, type MosaicNode } from "react-mosaic-component";
 import "react-mosaic-component/react-mosaic-component.css";
+import {
+  readText as readClipboard,
+  writeText as writeClipboard,
+} from "@tauri-apps/plugin-clipboard-manager";
 import { useAppStore, type SplitSide } from "../store/appStore";
 import { Terminal } from "./Terminal";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { Terminal as TerminalIcon } from "./icons";
 import { cwdLabel } from "../utils/path";
+import { getTerminal } from "../utils/terminalRegistry";
 import "./MosaicTab.css";
+
+const IS_MAC =
+  typeof navigator !== "undefined" &&
+  /Mac|iPhone|iPad/.test(navigator.platform);
 
 type MosaicTabProps = {
   tabId: string;
@@ -59,6 +68,11 @@ export function MosaicTab({ tabId, isActiveTab }: MosaicTabProps) {
 
   if (!tab || !tab.mosaic) return null;
 
+  const xtermForCtx = ctx ? getTerminal(ctx.leafId) : undefined;
+  const hasSelection = xtermForCtx?.hasSelection() ?? false;
+  const copyKbd = IS_MAC ? "⌘C" : "Ctrl+Shift+C";
+  const pasteKbd = IS_MAC ? "⌘V" : "Ctrl+Shift+V";
+
   const menuItems: MenuItem[] = ctx
     ? [
         ...(
@@ -72,6 +86,27 @@ export function MosaicTab({ tabId, isActiveTab }: MosaicTabProps) {
           label,
           onClick: () => void splitPanel(ctx.leafId, side as SplitSide),
         })),
+        { separator: true } as const,
+        {
+          label: "Copy",
+          kbd: copyKbd,
+          disabled: !hasSelection,
+          onClick: () => {
+            const text = xtermForCtx?.getSelection();
+            if (text) void writeClipboard(text).catch(() => {});
+          },
+        },
+        {
+          label: "Paste",
+          kbd: pasteKbd,
+          onClick: () => {
+            void readClipboard()
+              .then((text) => {
+                if (text) xtermForCtx?.paste(text);
+              })
+              .catch(() => {});
+          },
+        },
         { separator: true } as const,
         {
           label: "Close Panel",
