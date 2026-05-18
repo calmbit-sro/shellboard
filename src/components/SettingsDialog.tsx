@@ -1,43 +1,76 @@
-import { useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
+import { getName, getVersion, getTauriVersion } from "@tauri-apps/api/app";
 import {
   DEFAULT_SETTINGS,
   SETTINGS_LIMITS,
   useAppStore,
+  type Settings,
 } from "../store/appStore";
 import { findTheme, THEMES } from "../utils/themes";
-import { Modal } from "./Modal";
+import { Cog, Folder, Search, Terminal as TerminalIcon } from "./icons";
 import "./SettingsDialog.css";
 
-function ThemeSwatches({ currentId }: { currentId: string }) {
-  const t = findTheme(currentId).theme;
-  const swatches = [
-    t.background,
-    t.foreground,
-    t.red,
-    t.green,
-    t.yellow,
-    t.blue,
-    t.magenta,
-    t.cyan,
-  ];
-  return (
-    <div className="settings__swatches" aria-hidden>
-      {swatches.map((c, i) => (
-        <span
-          key={i}
-          className="settings__swatch"
-          style={{ background: c }}
-        />
-      ))}
-    </div>
-  );
-}
+type SettingsDialogProps = {
+  open: boolean;
+  onClose: () => void;
+  onOpenAbout: () => void;
+};
+
+type SectionId =
+  | "general"
+  | "terminal"
+  | "appearance"
+  | "shell"
+  | "shortcuts"
+  | "about";
+
+const RAIL: ReadonlyArray<{
+  id: SectionId;
+  label: string;
+  icon: (active: boolean) => ReactNode;
+}> = [
+  { id: "general", label: "General", icon: () => <Cog size={13} /> },
+  { id: "terminal", label: "Terminal", icon: () => <TerminalIcon size={13} /> },
+  {
+    id: "appearance",
+    label: "Appearance",
+    icon: () => (
+      <span
+        className="settings__rail-swatch"
+        aria-hidden
+      />
+    ),
+  },
+  { id: "shell", label: "Shell", icon: () => <Folder size={13} /> },
+  {
+    id: "shortcuts",
+    label: "Shortcuts",
+    icon: () => (
+      <span className="settings__rail-glyph" aria-hidden>
+        ⌘
+      </span>
+    ),
+  },
+  {
+    id: "about",
+    label: "About",
+    icon: () => (
+      <span className="settings__rail-glyph" aria-hidden>
+        ⓘ
+      </span>
+    ),
+  },
+];
 
 const FONT_PRESETS = [
-  {
-    label: "System (Menlo / Consolas)",
-    value: DEFAULT_SETTINGS.terminalFontFamily,
-  },
+  { label: "System (Menlo / Consolas)", value: DEFAULT_SETTINGS.terminalFontFamily },
   { label: "Menlo", value: "Menlo, monospace" },
   { label: "Monaco", value: "Monaco, monospace" },
   { label: "SF Mono", value: '"SF Mono", ui-monospace, monospace' },
@@ -48,308 +81,1020 @@ const FONT_PRESETS = [
   { label: "Source Code Pro", value: '"Source Code Pro", monospace' },
 ];
 
-type SettingsDialogProps = {
-  open: boolean;
-  onClose: () => void;
-  onOpenAbout: () => void;
-};
+const SHORTCUTS: ReadonlyArray<{
+  keys: string;
+  action: string;
+}> = [
+  { keys: "Cmd/Ctrl+T", action: "New tab in active project" },
+  { keys: "Cmd/Ctrl+W", action: "Close active tab" },
+  { keys: "Cmd/Ctrl+Shift+W", action: "Close active split panel" },
+  { keys: "Cmd/Ctrl+D", action: "Split vertical (new panel right)" },
+  { keys: "Cmd/Ctrl+Shift+D", action: "Split horizontal (new panel down)" },
+  { keys: "Cmd/Ctrl+Shift+Arrows", action: "Split in arrow direction (left/right/up/down)" },
+  { keys: "Cmd/Ctrl+Tab / Shift+Tab", action: "Next / previous tab in project" },
+  { keys: "Cmd+Shift+] / Cmd+Shift+[", action: "Next / previous tab (macOS alias)" },
+  { keys: "Cmd/Ctrl+1..9", action: "Jump to tab N (within project)" },
+  { keys: "Cmd/Ctrl+Alt+Arrows", action: "Move focus between split panels" },
+  { keys: "Cmd/Ctrl+B", action: "Hide / show sidebar" },
+  { keys: "Cmd/Ctrl+F", action: "Find in focused terminal" },
+  { keys: "Cmd/Ctrl+Shift+F", action: "Global search across terminals" },
+  { keys: "Cmd/Ctrl+,", action: "Open settings" },
+  { keys: "Cmd/Ctrl+K (or Cmd/Ctrl+Shift+P)", action: "Open command palette" },
+];
+
+const SHELLBOARD_PALETTE = [
+  "#181a1f",
+  "#3a3d46",
+  "#e57373",
+  "#6ec27a",
+  "#d8c66b",
+  "#7aa8e8",
+  "#d98ec9",
+  "#6dc7c7",
+  "#e8e9ee",
+];
 
 export function SettingsDialog({
   open,
   onClose,
   onOpenAbout,
 }: SettingsDialogProps) {
-  const settings = useAppStore((s) => s.settings);
-  const updateSettings = useAppStore((s) => s.updateSettings);
+  const [section, setSection] = useState<SectionId>("general");
+  const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement | null>(null);
 
-  const presetMatch = FONT_PRESETS.find(
-    (p) => p.value === settings.terminalFontFamily,
-  );
-  const [isCustom, setIsCustom] = useState(!presetMatch);
-  const [customFamily, setCustomFamily] = useState(
-    presetMatch ? DEFAULT_SETTINGS.terminalFontFamily : settings.terminalFontFamily,
-  );
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        if (query) setQuery("");
+        else onClose();
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      }
+    }
+    window.addEventListener("keydown", onKey, { capture: true });
+    return () =>
+      window.removeEventListener("keydown", onKey, { capture: true });
+  }, [open, onClose, query]);
+
+  useEffect(() => {
+    if (!open) {
+      setQuery("");
+      setSection("general");
+    }
+  }, [open]);
+
+  if (!open) return null;
 
   return (
-    <Modal open={open} onClose={onClose} title="Settings" maxWidth={480}>
-      <div className="settings">
-        <section className="settings__section">
-          <h3 className="settings__heading">Terminal</h3>
+    <div className="settings-backdrop" onMouseDown={onClose}>
+      <div
+        className="settings-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Settings"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <header className="settings-dialog__header">
+          <Cog size={14} style={{ color: "var(--muted)" }} />
+          <span className="settings-dialog__title">Settings</span>
+          <span className="settings-dialog__spacer" />
+          <label className="settings-dialog__search">
+            <Search size={11} style={{ color: "var(--muted)" }} />
+            <input
+              ref={searchRef}
+              type="text"
+              placeholder="Search settings…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              spellCheck={false}
+            />
+            {query ? (
+              <kbd className="kbd" onClick={() => setQuery("")}>
+                esc
+              </kbd>
+            ) : (
+              <kbd className="kbd">⌘F</kbd>
+            )}
+          </label>
+        </header>
 
-          <div className="settings__field">
-            <label htmlFor="term-font-preset">Font</label>
-            <select
-              id="term-font-preset"
-              value={
-                isCustom
-                  ? "__custom__"
-                  : settings.terminalFontFamily
-              }
-              onChange={(e) => {
-                if (e.target.value === "__custom__") {
-                  setIsCustom(true);
-                  void updateSettings({ terminalFontFamily: customFamily });
-                } else {
-                  setIsCustom(false);
-                  void updateSettings({ terminalFontFamily: e.target.value });
-                }
-              }}
-            >
-              {FONT_PRESETS.map((p) => (
-                <option key={p.label} value={p.value}>
-                  {p.label}
-                </option>
-              ))}
-              <option value="__custom__">Custom…</option>
-            </select>
-          </div>
-
-          {isCustom && (
-            <div className="settings__field">
-              <label htmlFor="term-font-custom">Custom font-family</label>
-              <input
-                id="term-font-custom"
-                type="text"
-                value={customFamily}
-                placeholder='e.g. "Fira Code", monospace'
-                onChange={(e) => setCustomFamily(e.target.value)}
-                onBlur={() => {
-                  if (customFamily.trim()) {
-                    void updateSettings({ terminalFontFamily: customFamily });
+        <div className="settings-dialog__body">
+          <nav className="settings-dialog__rail" aria-label="Settings sections">
+            {RAIL.map((item) => {
+              const active = !query && section === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={
+                    "settings-dialog__rail-item" +
+                    (active ? " is-active" : "") +
+                    (query ? " is-dim" : "")
                   }
+                  onClick={() => {
+                    setQuery("");
+                    setSection(item.id);
+                  }}
+                >
+                  <span className="settings-dialog__rail-icon">
+                    {item.icon(active)}
+                  </span>
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="settings-dialog__pane">
+            {query ? (
+              <SearchResults
+                query={query}
+                onJump={(id) => {
+                  setQuery("");
+                  setSection(id);
                 }}
               />
-            </div>
-          )}
-
-          <div className="settings__field">
-            <label htmlFor="term-font-size">
-              Font size ({SETTINGS_LIMITS.terminalFontSize.min}–
-              {SETTINGS_LIMITS.terminalFontSize.max} px)
-            </label>
-            <input
-              id="term-font-size"
-              type="number"
-              min={SETTINGS_LIMITS.terminalFontSize.min}
-              max={SETTINGS_LIMITS.terminalFontSize.max}
-              value={settings.terminalFontSize}
-              onChange={(e) => {
-                const n = parseInt(e.target.value, 10);
-                if (!Number.isNaN(n)) {
-                  void updateSettings({ terminalFontSize: n });
-                }
-              }}
-            />
+            ) : (
+              <SectionPane id={section} />
+            )}
           </div>
+        </div>
 
-          <div className="settings__field">
-            <label htmlFor="term-scrollback">
-              Scrollback ({SETTINGS_LIMITS.scrollback.min}–
-              {SETTINGS_LIMITS.scrollback.max} lines)
-            </label>
-            <input
-              id="term-scrollback"
-              type="number"
-              min={SETTINGS_LIMITS.scrollback.min}
-              max={SETTINGS_LIMITS.scrollback.max}
-              step={500}
-              value={settings.scrollback}
-              onChange={(e) => {
-                const n = parseInt(e.target.value, 10);
-                if (!Number.isNaN(n)) {
-                  void updateSettings({ scrollback: n });
-                }
-              }}
-            />
-          </div>
-
-          <div className="settings__field">
-            <label htmlFor="term-theme">Theme</label>
-            <select
-              id="term-theme"
-              value={settings.terminalTheme}
-              onChange={(e) =>
-                void updateSettings({ terminalTheme: e.target.value })
-              }
-            >
-              {THEMES.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-            <ThemeSwatches currentId={settings.terminalTheme} />
-          </div>
-        </section>
-
-        <section className="settings__section">
-          <h3 className="settings__heading">Application</h3>
-
-          <div className="settings__field">
-            <label htmlFor="ui-font-size">
-              UI font size ({SETTINGS_LIMITS.uiFontSize.min}–
-              {SETTINGS_LIMITS.uiFontSize.max} px)
-            </label>
-            <input
-              id="ui-font-size"
-              type="number"
-              min={SETTINGS_LIMITS.uiFontSize.min}
-              max={SETTINGS_LIMITS.uiFontSize.max}
-              value={settings.uiFontSize}
-              onChange={(e) => {
-                const n = parseInt(e.target.value, 10);
-                if (!Number.isNaN(n)) {
-                  void updateSettings({ uiFontSize: n });
-                }
-              }}
-            />
-          </div>
-
-          <div className="settings__field settings__field--check">
-            <label className="settings__check">
-              <input
-                type="checkbox"
-                checked={settings.autoCwdTracking}
-                onChange={(e) =>
-                  void updateSettings({ autoCwdTracking: e.target.checked })
-                }
-              />
-              <span>Track current directory (OSC 7 auto-setup)</span>
-            </label>
-            <p className="settings__hint">
-              Injects a shell hook so session restore remembers the directory
-              you <code>cd</code>’d into. Supported: zsh, bash, fish, nushell.
-              Affects newly-spawned terminals only.
-            </p>
-          </div>
-
-          <div className="settings__field settings__field--check">
-            <label className="settings__check">
-              <input
-                type="checkbox"
-                checked={settings.checkForUpdatesOnStartup}
-                onChange={(e) =>
-                  void updateSettings({
-                    checkForUpdatesOnStartup: e.target.checked,
-                  })
-                }
-              />
-              <span>Check for updates on startup</span>
-            </label>
-            <p className="settings__hint">
-              Pings GitHub Releases at most once per day. When a newer
-              version exists, a clickable badge appears in the status bar.
-            </p>
-          </div>
-
-          <div className="settings__field settings__field--check">
-            <label className="settings__check">
-              <input
-                type="checkbox"
-                checked={settings.showPanelHeader}
-                onChange={(e) =>
-                  void updateSettings({
-                    showPanelHeader: e.target.checked,
-                  })
-                }
-              />
-              <span>Show panel header</span>
-            </label>
-            <p className="settings__hint">
-              Render a thin header above each terminal split showing the
-              shell name and current directory. Turn off for absolute-minimum
-              chrome.
-            </p>
-          </div>
-
-          <div className="settings__field settings__field--check">
-            <label className="settings__check">
-              <input
-                type="checkbox"
-                checked={settings.persistScrollback}
-                onChange={(e) =>
-                  void updateSettings({
-                    persistScrollback: e.target.checked,
-                  })
-                }
-              />
-              <span>Persist scrollback across restarts</span>
-            </label>
-            <p className="settings__hint">
-              Snapshots each terminal’s scrollback to <code>buffers.json</code>{" "}
-              so restored sessions show the prior output. Off keeps disk
-              writes lighter and avoids retaining sensitive output between
-              launches; existing snapshots are wiped when you turn it off.
-            </p>
-          </div>
-        </section>
-
-        <section className="settings__section">
-          <h3 className="settings__heading">Shell</h3>
-
-          <div className="settings__field">
-            <label htmlFor="shell-path">Shell path</label>
-            <input
-              id="shell-path"
-              type="text"
-              className="settings__text"
-              placeholder="Default: $SHELL"
-              value={settings.shellPath}
-              onChange={(e) =>
-                void updateSettings({ shellPath: e.target.value })
-              }
-            />
-          </div>
-
-          <div className="settings__field">
-            <label htmlFor="shell-args">Shell arguments</label>
-            <input
-              id="shell-args"
-              type="text"
-              className="settings__text"
-              placeholder="Default: auto (-l for POSIX shells)"
-              value={settings.shellArgs}
-              onChange={(e) =>
-                void updateSettings({ shellArgs: e.target.value })
-              }
-            />
-            <p className="settings__hint">
-              Leave both fields empty for automatic handling. When you set
-              your own arguments, Shellboard stops adding <code>-l</code>
-              automatically — provide it yourself if you want a login shell.
-              Affects newly-spawned terminals only.
-            </p>
-          </div>
-        </section>
-
-        <div className="settings__footer">
+        <footer className="settings-dialog__footer">
           <button
             type="button"
-            className="settings__about"
+            className="sb-btn sb-btn--ghost"
             onClick={onOpenAbout}
           >
             About…
           </button>
+          <span className="settings-dialog__spacer" />
           <button
             type="button"
-            className="settings__reset"
+            className="sb-btn sb-btn--secondary"
             onClick={() => {
-              setIsCustom(false);
-              setCustomFamily(DEFAULT_SETTINGS.terminalFontFamily);
-              void updateSettings(DEFAULT_SETTINGS);
+              void useAppStore.getState().updateSettings(DEFAULT_SETTINGS);
             }}
           >
             Reset to defaults
           </button>
           <button
             type="button"
-            className="settings__done"
+            className="sb-btn sb-btn--primary"
             onClick={onClose}
           >
-            Done
+            <span>Done</span>
+            <kbd className="kbd kbd--on-accent">↵</kbd>
           </button>
-        </div>
+        </footer>
       </div>
-    </Modal>
+    </div>
+  );
+}
+
+// ── Section pane ──────────────────────────────────────────────────────────
+
+function SectionPane({ id }: { id: SectionId }) {
+  switch (id) {
+    case "general":
+      return (
+        <SectionHeader
+          title="General"
+          subtitle="Window-wide preferences applied to every project."
+        >
+          <UiFontSizeField />
+          <ShowGroupCountField />
+          <CheckForUpdatesField />
+        </SectionHeader>
+      );
+    case "terminal":
+      return (
+        <SectionHeader
+          title="Terminal"
+          subtitle="Font, scrollback, and behaviour used by every spawned shell."
+        >
+          <TerminalFontField />
+          <TerminalFontSizeField />
+          <ScrollbackField />
+          <PersistScrollbackField />
+          <ShowPanelHeaderField />
+          <TrackCwdField />
+        </SectionHeader>
+      );
+    case "appearance":
+      return (
+        <SectionHeader
+          title="Appearance"
+          subtitle="Terminal palette. The chrome auto-aligns to the background."
+        >
+          <ThemeField />
+        </SectionHeader>
+      );
+    case "shell":
+      return (
+        <SectionHeader
+          title="Shell"
+          subtitle="Override the program ShellBoard launches in new panels."
+        >
+          <ShellPathField />
+          <ShellArgsField />
+        </SectionHeader>
+      );
+    case "shortcuts":
+      return (
+        <SectionHeader
+          title="Shortcuts"
+          subtitle="Read-only for now. Editing is on the roadmap."
+        >
+          <ShortcutsList />
+        </SectionHeader>
+      );
+    case "about":
+      return <AboutPane />;
+  }
+}
+
+function SectionHeader({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  children: ReactNode;
+}) {
+  return (
+    <>
+      <div className="settings-section__head">
+        <h2 className="settings-section__title">{title}</h2>
+        <p className="settings-section__subtitle">{subtitle}</p>
+      </div>
+      <div className="settings-section__body">{children}</div>
+    </>
+  );
+}
+
+// ── Field rows ────────────────────────────────────────────────────────────
+
+type FieldRowProps = {
+  label: string;
+  hint?: ReactNode;
+  align?: "center" | "top";
+  children: ReactNode;
+  section?: string;
+};
+
+function FieldRow({ label, hint, align = "center", children, section }: FieldRowProps) {
+  return (
+    <div
+      className={
+        "field-row" + (align === "top" ? " field-row--top" : "")
+      }
+    >
+      <div className="field-row__text">
+        {section && <span className="field-row__chip">{section}</span>}
+        <span className="field-row__label">{label}</span>
+        {hint && <p className="field-row__hint">{hint}</p>}
+      </div>
+      <div className="field-row__control">{children}</div>
+    </div>
+  );
+}
+
+function FieldStack({
+  label,
+  hint,
+  children,
+  section,
+}: {
+  label: string;
+  hint?: ReactNode;
+  children: ReactNode;
+  section?: string;
+}) {
+  return (
+    <div className="field-stack">
+      {section && <span className="field-row__chip">{section}</span>}
+      <span className="field-stack__label">{label}</span>
+      {children}
+      {hint && <p className="field-row__hint">{hint}</p>}
+    </div>
+  );
+}
+
+// ── Control primitives ────────────────────────────────────────────────────
+
+type SelectInputProps = {
+  value: string;
+  onChange: (next: string) => void;
+  options: ReadonlyArray<{ value: string; label: string }>;
+  width?: number;
+  mono?: boolean;
+  id?: string;
+};
+
+function SelectInput({
+  value,
+  onChange,
+  options,
+  width,
+  mono,
+  id,
+}: SelectInputProps) {
+  return (
+    <div
+      className="sb-surface sb-select"
+      style={width ? { width } : undefined}
+    >
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={mono ? "sb-select__native sb-select__native--mono" : "sb-select__native"}
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <span className="sb-select__chevron" aria-hidden>
+        ▾
+      </span>
+    </div>
+  );
+}
+
+type StepperProps = {
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  suffix?: string;
+  onChange: (next: number) => void;
+  width?: number;
+  id?: string;
+};
+
+function Stepper({
+  value,
+  min,
+  max,
+  step = 1,
+  suffix,
+  onChange,
+  width = 96,
+  id,
+}: StepperProps) {
+  function clamp(n: number) {
+    if (Number.isNaN(n)) return value;
+    return Math.max(min, Math.min(max, n));
+  }
+  return (
+    <div className="sb-surface sb-stepper" style={{ width }}>
+      <input
+        id={id}
+        type="number"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => {
+          const n = parseInt(e.target.value, 10);
+          if (!Number.isNaN(n)) onChange(clamp(n));
+        }}
+        className="sb-stepper__input"
+      />
+      {suffix && <span className="sb-stepper__suffix">{suffix}</span>}
+      <span className="sb-stepper__chevrons" aria-hidden>
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={() => onChange(clamp(value + step))}
+          aria-label="Increase"
+        >
+          <svg width="8" height="5" viewBox="0 0 8 5" fill="none">
+            <path
+              d="M1 4L4 1L7 4"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={() => onChange(clamp(value - step))}
+          aria-label="Decrease"
+        >
+          <svg width="8" height="5" viewBox="0 0 8 5" fill="none">
+            <path
+              d="M1 1L4 4L7 1"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
+      </span>
+    </div>
+  );
+}
+
+type TextInputProps = {
+  value: string;
+  placeholder?: string;
+  onChange: (next: string) => void;
+  mono?: boolean;
+  id?: string;
+  fullWidth?: boolean;
+  style?: CSSProperties;
+};
+
+function TextInput({
+  value,
+  placeholder,
+  onChange,
+  mono,
+  id,
+  fullWidth,
+  style,
+}: TextInputProps) {
+  return (
+    <div
+      className={
+        "sb-surface sb-textinput" + (fullWidth ? " sb-textinput--full" : "")
+      }
+      style={style}
+    >
+      <input
+        id={id}
+        type="text"
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        className={mono ? "sb-textinput__input sb-textinput__input--mono" : "sb-textinput__input"}
+        spellCheck={false}
+      />
+    </div>
+  );
+}
+
+function Toggle2({
+  on,
+  onChange,
+  id,
+}: {
+  on: boolean;
+  onChange: (next: boolean) => void;
+  id?: string;
+}) {
+  return (
+    <button
+      id={id}
+      type="button"
+      role="switch"
+      aria-checked={on}
+      className={"sb-toggle" + (on ? " is-on" : "")}
+      onClick={() => onChange(!on)}
+    >
+      <span className="sb-toggle__thumb" />
+    </button>
+  );
+}
+
+function PaletteStrip({ colors }: { colors: ReadonlyArray<string> }) {
+  return (
+    <div className="sb-palette">
+      {colors.map((c, i) => (
+        <span key={i} className="sb-palette__swatch" style={{ background: c }} />
+      ))}
+    </div>
+  );
+}
+
+// ── Concrete fields ───────────────────────────────────────────────────────
+
+function useSettings() {
+  const settings = useAppStore((s) => s.settings);
+  const updateSettings = useAppStore((s) => s.updateSettings);
+  return { settings, update: updateSettings } as const;
+}
+
+function set<K extends keyof Settings>(key: K, value: Settings[K]) {
+  void useAppStore.getState().updateSettings({ [key]: value } as Partial<Settings>);
+}
+
+function UiFontSizeField({ section }: { section?: string } = {}) {
+  const { settings } = useSettings();
+  return (
+    <FieldRow
+      label="UI font size"
+      hint={`Sidebar, tab bar, status bar. ${SETTINGS_LIMITS.uiFontSize.min}–${SETTINGS_LIMITS.uiFontSize.max} px.`}
+      section={section}
+    >
+      <Stepper
+        value={settings.uiFontSize}
+        min={SETTINGS_LIMITS.uiFontSize.min}
+        max={SETTINGS_LIMITS.uiFontSize.max}
+        suffix="px"
+        width={92}
+        onChange={(n) => set("uiFontSize", n)}
+      />
+    </FieldRow>
+  );
+}
+
+function CheckForUpdatesField({ section }: { section?: string } = {}) {
+  const { settings } = useSettings();
+  return (
+    <FieldRow
+      label="Check for updates on startup"
+      align="top"
+      hint="Pings GitHub Releases at most once per day. A clickable badge appears in the status bar when a newer version exists."
+      section={section}
+    >
+      <Toggle2
+        on={settings.checkForUpdatesOnStartup}
+        onChange={(v) => set("checkForUpdatesOnStartup", v)}
+      />
+    </FieldRow>
+  );
+}
+
+function TerminalFontField({ section }: { section?: string } = {}) {
+  const { settings } = useSettings();
+  const isCustom = !FONT_PRESETS.some(
+    (p) => p.value === settings.terminalFontFamily,
+  );
+  const selectValue = isCustom ? "__custom__" : settings.terminalFontFamily;
+  const options = [
+    ...FONT_PRESETS.map((p) => ({ value: p.value, label: p.label })),
+    { value: "__custom__", label: "Custom…" },
+  ];
+  return (
+    <>
+      <FieldRow
+        label="Font"
+        hint="Powerline-aware fonts (Meslo, FiraCode, Hack NF) render Starship glyphs correctly."
+        section={section}
+      >
+        <SelectInput
+          value={selectValue}
+          options={options}
+          width={240}
+          mono
+          onChange={(v) => {
+            if (v === "__custom__") return;
+            set("terminalFontFamily", v);
+          }}
+        />
+      </FieldRow>
+      {isCustom && (
+        <FieldRow label="Custom font-family" section={section}>
+          <TextInput
+            value={settings.terminalFontFamily}
+            placeholder='e.g. "Fira Code", monospace'
+            mono
+            onChange={(v) => set("terminalFontFamily", v)}
+            style={{ width: 240 }}
+          />
+        </FieldRow>
+      )}
+    </>
+  );
+}
+
+function TerminalFontSizeField({ section }: { section?: string } = {}) {
+  const { settings } = useSettings();
+  return (
+    <FieldRow
+      label="Font size"
+      hint={`${SETTINGS_LIMITS.terminalFontSize.min}–${SETTINGS_LIMITS.terminalFontSize.max} px.`}
+      section={section}
+    >
+      <Stepper
+        value={settings.terminalFontSize}
+        min={SETTINGS_LIMITS.terminalFontSize.min}
+        max={SETTINGS_LIMITS.terminalFontSize.max}
+        suffix="px"
+        width={92}
+        onChange={(n) => set("terminalFontSize", n)}
+      />
+    </FieldRow>
+  );
+}
+
+function ScrollbackField({ section }: { section?: string } = {}) {
+  const { settings } = useSettings();
+  return (
+    <FieldRow
+      label="Scrollback"
+      hint={`${SETTINGS_LIMITS.scrollback.min.toLocaleString()}–${SETTINGS_LIMITS.scrollback.max.toLocaleString()} lines. Larger buffers use more RAM.`}
+      section={section}
+    >
+      <Stepper
+        value={settings.scrollback}
+        min={SETTINGS_LIMITS.scrollback.min}
+        max={SETTINGS_LIMITS.scrollback.max}
+        step={500}
+        width={112}
+        onChange={(n) => set("scrollback", n)}
+      />
+    </FieldRow>
+  );
+}
+
+function PersistScrollbackField({ section }: { section?: string } = {}) {
+  const { settings } = useSettings();
+  return (
+    <FieldRow
+      label="Persist scrollback across restarts"
+      align="top"
+      hint="Snapshots each terminal’s scrollback to buffers.json so restored sessions show prior output. Off keeps disk writes lighter and avoids retaining sensitive output between launches; existing snapshots are wiped when you turn it off."
+      section={section}
+    >
+      <Toggle2
+        on={settings.persistScrollback}
+        onChange={(v) => set("persistScrollback", v)}
+      />
+    </FieldRow>
+  );
+}
+
+function ShowPanelHeaderField({ section }: { section?: string } = {}) {
+  const { settings } = useSettings();
+  return (
+    <FieldRow
+      label="Show panel header"
+      align="top"
+      hint="Thin header above each terminal split showing shell + cwd. Turn off for absolute-minimum chrome."
+      section={section}
+    >
+      <Toggle2
+        on={settings.showPanelHeader}
+        onChange={(v) => set("showPanelHeader", v)}
+      />
+    </FieldRow>
+  );
+}
+
+function ShowGroupCountField({ section }: { section?: string } = {}) {
+  const { settings } = useSettings();
+  return (
+    <FieldRow
+      label="Show group project count"
+      align="top"
+      hint="Small badge next to each group header in the sidebar showing how many projects it contains."
+      section={section}
+    >
+      <Toggle2
+        on={settings.showGroupCount}
+        onChange={(v) => set("showGroupCount", v)}
+      />
+    </FieldRow>
+  );
+}
+
+function TrackCwdField({ section }: { section?: string } = {}) {
+  const { settings } = useSettings();
+  return (
+    <FieldRow
+      label="Track current directory"
+      align="top"
+      hint="Injects an OSC 7 shell hook so session restore remembers the directory you cd’d into. Supports zsh, bash, fish, nushell. Affects newly-spawned terminals only."
+      section={section}
+    >
+      <Toggle2
+        on={settings.autoCwdTracking}
+        onChange={(v) => set("autoCwdTracking", v)}
+      />
+    </FieldRow>
+  );
+}
+
+function ThemeField({ section }: { section?: string } = {}) {
+  const { settings } = useSettings();
+  const theme = findTheme(settings.terminalTheme).theme;
+  const swatches = useMemo(
+    () =>
+      [
+        theme.background,
+        theme.foreground,
+        theme.red,
+        theme.green,
+        theme.yellow,
+        theme.blue,
+        theme.magenta,
+        theme.cyan,
+        theme.white,
+      ].filter(Boolean) as string[],
+    [theme],
+  );
+  return (
+    <FieldRow
+      label="Theme"
+      align="top"
+      hint="Chrome auto-aligns to the terminal background."
+      section={section}
+    >
+      <div className="settings-theme-control">
+        <SelectInput
+          value={settings.terminalTheme}
+          options={THEMES.map((t) => ({ value: t.id, label: t.name }))}
+          width={220}
+          onChange={(v) => set("terminalTheme", v)}
+        />
+        <PaletteStrip
+          colors={swatches.length ? swatches : SHELLBOARD_PALETTE}
+        />
+      </div>
+    </FieldRow>
+  );
+}
+
+function ShellPathField({ section }: { section?: string } = {}) {
+  const { settings } = useSettings();
+  return (
+    <FieldStack label="Shell path" section={section}>
+      <TextInput
+        value={settings.shellPath}
+        placeholder="Default: $SHELL"
+        mono
+        fullWidth
+        onChange={(v) => set("shellPath", v)}
+      />
+    </FieldStack>
+  );
+}
+
+function ShellArgsField({ section }: { section?: string } = {}) {
+  const { settings } = useSettings();
+  return (
+    <FieldStack
+      label="Shell arguments"
+      section={section}
+      hint={
+        <>
+          Leave both fields empty for automatic handling. When you set your own
+          arguments, ShellBoard stops adding <code>-l</code> automatically —
+          provide it yourself if you want a login shell. Affects newly-spawned
+          terminals only.
+        </>
+      }
+    >
+      <TextInput
+        value={settings.shellArgs}
+        placeholder="Default: auto (-l for POSIX shells)"
+        mono
+        fullWidth
+        onChange={(v) => set("shellArgs", v)}
+      />
+    </FieldStack>
+  );
+}
+
+function ShortcutsList() {
+  return (
+    <div className="shortcuts-list">
+      <p className="shortcuts-list__note">
+        <code>Cmd</code> on macOS, <code>Ctrl</code> elsewhere.
+      </p>
+      <table className="shortcuts-table">
+        <tbody>
+          {SHORTCUTS.map((s) => (
+            <tr key={s.keys}>
+              <td className="shortcuts-table__keys">
+                <kbd className="kbd">{s.keys}</kbd>
+              </td>
+              <td className="shortcuts-table__action">{s.action}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function AboutPane() {
+  const [info, setInfo] = useState<{
+    name: string;
+    version: string;
+    tauri: string;
+  } | null>(null);
+  useEffect(() => {
+    (async () => {
+      try {
+        const [name, version, tauri] = await Promise.all([
+          getName(),
+          getVersion(),
+          getTauriVersion(),
+        ]);
+        setInfo({ name, version, tauri });
+      } catch {
+        setInfo({ name: "Shellboard", version: "?", tauri: "?" });
+      }
+    })();
+  }, []);
+
+  return (
+    <div className="about-pane">
+      <img src="/logo.png" alt="" className="about-pane__logo" />
+      <div className="about-pane__name">{info?.name ?? "Shellboard"}</div>
+      <div className="about-pane__version">Version {info?.version ?? "…"}</div>
+      <p className="about-pane__tagline">
+        Cross-platform terminal with per-project tabs &amp; splits.
+      </p>
+      <p className="about-pane__meta">
+        Built with Tauri {info?.tauri ?? "…"} · React · xterm.js · portable-pty
+      </p>
+      <div className="about-pane__links">
+        <a
+          href="https://github.com/petrhlozek/shellboard"
+          target="_blank"
+          rel="noreferrer"
+        >
+          GitHub repo
+        </a>
+        <span className="about-pane__sep">·</span>
+        <a
+          href="https://github.com/petrhlozek/shellboard/blob/main/CHANGELOG.md"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Changelog
+        </a>
+        <span className="about-pane__sep">·</span>
+        <a
+          href="https://github.com/petrhlozek/shellboard/issues/new"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Report an issue
+        </a>
+      </div>
+    </div>
+  );
+}
+
+// ── Search ────────────────────────────────────────────────────────────────
+
+type SearchEntry = {
+  id: string;
+  section: SectionId;
+  sectionLabel: string;
+  label: string;
+  keywords: string;
+  render: (chipLabel: string) => ReactNode;
+};
+
+const SEARCH_INDEX: ReadonlyArray<SearchEntry> = [
+  {
+    id: "ui-font-size",
+    section: "general",
+    sectionLabel: "General",
+    label: "UI font size",
+    keywords: "sidebar tab bar status bar font ui size",
+    render: (s) => <UiFontSizeField section={s} />,
+  },
+  {
+    id: "check-updates",
+    section: "general",
+    sectionLabel: "General",
+    label: "Check for updates on startup",
+    keywords: "updates github releases version",
+    render: (s) => <CheckForUpdatesField section={s} />,
+  },
+  {
+    id: "group-count",
+    section: "general",
+    sectionLabel: "General",
+    label: "Show group project count",
+    keywords: "sidebar group count badge projects number",
+    render: (s) => <ShowGroupCountField section={s} />,
+  },
+  {
+    id: "term-font",
+    section: "terminal",
+    sectionLabel: "Terminal",
+    label: "Font",
+    keywords: "font family meslo fira jetbrains terminal",
+    render: (s) => <TerminalFontField section={s} />,
+  },
+  {
+    id: "term-font-size",
+    section: "terminal",
+    sectionLabel: "Terminal",
+    label: "Font size",
+    keywords: "terminal font size px",
+    render: (s) => <TerminalFontSizeField section={s} />,
+  },
+  {
+    id: "scrollback",
+    section: "terminal",
+    sectionLabel: "Terminal",
+    label: "Scrollback",
+    keywords: "scrollback buffer lines history",
+    render: (s) => <ScrollbackField section={s} />,
+  },
+  {
+    id: "persist-scrollback",
+    section: "terminal",
+    sectionLabel: "Terminal",
+    label: "Persist scrollback across restarts",
+    keywords: "persist scrollback buffers restore session",
+    render: (s) => <PersistScrollbackField section={s} />,
+  },
+  {
+    id: "panel-header",
+    section: "terminal",
+    sectionLabel: "Terminal",
+    label: "Show panel header",
+    keywords: "panel header shell cwd",
+    render: (s) => <ShowPanelHeaderField section={s} />,
+  },
+  {
+    id: "track-cwd",
+    section: "terminal",
+    sectionLabel: "Terminal",
+    label: "Track current directory",
+    keywords: "osc 7 cwd directory tracking shell hook zsh bash fish nushell",
+    render: (s) => <TrackCwdField section={s} />,
+  },
+  {
+    id: "theme",
+    section: "appearance",
+    sectionLabel: "Appearance",
+    label: "Theme",
+    keywords: "theme appearance palette colors shellboard dracula nord",
+    render: (s) => <ThemeField section={s} />,
+  },
+  {
+    id: "shell-path",
+    section: "shell",
+    sectionLabel: "Shell",
+    label: "Shell path",
+    keywords: "shell path zsh bash fish $SHELL program executable",
+    render: (s) => <ShellPathField section={s} />,
+  },
+  {
+    id: "shell-args",
+    section: "shell",
+    sectionLabel: "Shell",
+    label: "Shell arguments",
+    keywords: "shell arguments login -l flags",
+    render: (s) => <ShellArgsField section={s} />,
+  },
+];
+
+function SearchResults({
+  query,
+  onJump,
+}: {
+  query: string;
+  onJump: (id: SectionId) => void;
+}) {
+  const q = query.trim().toLowerCase();
+  const hits = SEARCH_INDEX.filter(
+    (e) =>
+      e.label.toLowerCase().includes(q) ||
+      e.keywords.includes(q) ||
+      e.sectionLabel.toLowerCase().includes(q),
+  );
+  return (
+    <>
+      <div className="settings-section__head">
+        <h2 className="settings-section__title">
+          {hits.length
+            ? `${hits.length} result${hits.length === 1 ? "" : "s"}`
+            : "No matches"}
+        </h2>
+        <p className="settings-section__subtitle">
+          {hits.length
+            ? "Click a section chip to jump back into the rail."
+            : `Nothing in settings matches “${query}”.`}
+        </p>
+      </div>
+      <div className="settings-section__body">
+        {hits.map((h) => (
+          <div key={h.id} className="search-result">
+            <button
+              type="button"
+              className="search-result__chip"
+              onClick={() => onJump(h.section)}
+            >
+              {h.sectionLabel}
+            </button>
+            {h.render(h.sectionLabel)}
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
