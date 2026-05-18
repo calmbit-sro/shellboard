@@ -3,8 +3,12 @@ import { Command } from "cmdk";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { useAppStore } from "../store/appStore";
 import { THEMES } from "../utils/themes";
+import { cwdLabel } from "../utils/path";
+import { collectLeaves } from "../utils/mosaic";
 import { Search } from "./icons";
 import "./CommandPalette.css";
+
+const RECENT_MAX = 5;
 
 type CommandPaletteProps = {
   open: boolean;
@@ -35,19 +39,50 @@ export function CommandPalette({
   const activeProject = projects.find((p) => p.id === activeProjectId);
   const tabs = useAppStore((s) => s.tabs);
   const activeTab = tabs.find((t) => t.id === activeTabId);
+  const terminals = useAppStore((s) => s.terminals);
+  const recentLeafIds = useAppStore((s) => s.recentLeafIds);
+
+  // Resolve recent leaf IDs into (project, tab, cwd) tuples. Drop entries
+  // whose leaf is no longer alive, and skip the panel the user is already
+  // looking at — no point jumping somewhere you already are.
+  const activeLeafId = activeTab?.focusedLeafId ?? null;
+  const recent = recentLeafIds
+    .filter((id) => id !== activeLeafId && !!terminals[id])
+    .map((id) => {
+      const tab = tabs.find(
+        (t) => t.mosaic && collectLeaves(t.mosaic).includes(id),
+      );
+      if (!tab) return null;
+      const project = projects.find((p) => p.id === tab.projectId);
+      if (!project) return null;
+      return { leafId: id, tab, project, cwd: terminals[id]?.cwd ?? "" };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null)
+    .slice(0, RECENT_MAX);
 
   const listRef = useRef<HTMLDivElement | null>(null);
 
-  // Close on Escape is handled internally by cmdk; also close on outside click.
+  // Close on outside click + Escape. cmdk doesn't manage open/close state
+  // itself, so we listen for Escape at capture phase to beat App.tsx's
+  // window-level shortcut handler.
   useEffect(() => {
     if (!open) return;
     function onDown(e: MouseEvent) {
       if (listRef.current?.contains(e.target as Node)) return;
       onClose();
     }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+      }
+    }
     window.addEventListener("mousedown", onDown, { capture: true });
+    window.addEventListener("keydown", onKey, { capture: true });
     return () => {
       window.removeEventListener("mousedown", onDown, { capture: true });
+      window.removeEventListener("keydown", onKey, { capture: true });
     };
   }, [open, onClose]);
 
@@ -79,6 +114,36 @@ export function CommandPalette({
             <Command.Empty className="palette__empty">
               No matching commands.
             </Command.Empty>
+
+            {recent.length > 0 && (
+              <Command.Group
+                heading="Recent terminals"
+                className="palette__group"
+              >
+                {recent.map((r) => (
+                  <Command.Item
+                    key={`recent-${r.leafId}`}
+                    value={`recent terminal ${r.project.name} ${r.tab.title} ${r.cwd}`}
+                    onSelect={run(() => store.revealTerminal(r.leafId))}
+                    className="palette__item"
+                  >
+                    <span
+                      className="palette__dot"
+                      style={{ background: r.project.color }}
+                    />
+                    <span className="palette__label">
+                      {r.project.name} · {r.tab.title}
+                      {r.cwd && (
+                        <span className="palette__sub">
+                          {" "}
+                          · {cwdLabel(r.cwd)}
+                        </span>
+                      )}
+                    </span>
+                  </Command.Item>
+                ))}
+              </Command.Group>
+            )}
 
             <Command.Group heading="Projects" className="palette__group">
               <Command.Item

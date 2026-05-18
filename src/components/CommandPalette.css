@@ -127,6 +127,10 @@
   white-space: nowrap;
 }
 
+.palette__sub {
+  color: var(--muted);
+}
+
 .palette__hint {
   margin-left: auto;
   display: inline-flex;
