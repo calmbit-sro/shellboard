@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useAppStore } from "../store/appStore";
 import { Modal } from "./Modal";
-import { ColorPicker, randomProjectColor } from "./ColorPicker";
+import { ColorPicker, pickUnusedProjectColor } from "./ColorPicker";
 
 function basename(path: string): string {
   const normalized = path.replace(/[\\/]+$/, "");
@@ -32,6 +32,7 @@ export function AddProjectFlow({
 }: AddProjectFlowProps) {
   const addProject = useAppStore((s) => s.addProject);
   const groups = useAppStore((s) => s.groups);
+  const projects = useAppStore((s) => s.projects);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
   const pickerActive = useRef(false);
@@ -54,10 +55,13 @@ export function AddProjectFlow({
           onClose();
           return;
         }
+        const usedColors = projects
+          .filter((p) => p.groupId === initialGroupId)
+          .map((p) => p.color);
         setDraft({
           path: picked,
           name: basename(picked),
-          color: randomProjectColor(),
+          color: pickUnusedProjectColor(usedColors),
           groupId: initialGroupId,
         });
       } finally {

@@ -18,6 +18,42 @@ export function randomProjectColor(): string {
   return PROJECT_COLORS[Math.floor(Math.random() * PROJECT_COLORS.length)];
 }
 
+function hslToHex(h: number, s: number, l: number): string {
+  const sN = s / 100;
+  const lN = l / 100;
+  const k = (n: number) => (n + h / 30) % 12;
+  const a = sN * Math.min(lN, 1 - lN);
+  const f = (n: number) => {
+    const v = lN - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+    return Math.round(255 * v)
+      .toString(16)
+      .padStart(2, "0");
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+
+/**
+ * Pick a color for a new project that isn't already used in the given set.
+ * Prefers an unused color from PROJECT_COLORS; if all are taken, generates
+ * a random color outside both the palette and the used set.
+ */
+export function pickUnusedProjectColor(usedColors: string[]): string {
+  const used = new Set(usedColors.map((c) => c.toLowerCase()));
+  const available = PROJECT_COLORS.filter((c) => !used.has(c.toLowerCase()));
+  if (available.length > 0) {
+    return available[Math.floor(Math.random() * available.length)];
+  }
+  const palette = new Set(PROJECT_COLORS.map((c) => c.toLowerCase()));
+  for (let i = 0; i < 50; i++) {
+    const hue = Math.floor(Math.random() * 360);
+    const sat = 55 + Math.floor(Math.random() * 26); // 55–80
+    const light = 50 + Math.floor(Math.random() * 16); // 50–65
+    const hex = hslToHex(hue, sat, light).toLowerCase();
+    if (!used.has(hex) && !palette.has(hex)) return hex;
+  }
+  return randomProjectColor();
+}
+
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
 type ColorPickerProps = {
