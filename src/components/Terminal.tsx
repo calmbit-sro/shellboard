@@ -24,6 +24,9 @@ const IS_MAC =
   typeof navigator !== "undefined" &&
   /Mac|iPhone|iPad/.test(navigator.platform);
 
+const IS_LINUX =
+  typeof navigator !== "undefined" && /Linux/.test(navigator.platform);
+
 type PtyDataPayload = { data: string };
 
 type TerminalProps = {
@@ -123,14 +126,19 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
     };
     container.addEventListener("mouseup", onMouseUp);
 
-    // Middle-click paste (X11 convention). Tauri can't read the X11 primary
-    // selection, but since copy-on-select keeps the latest selection in the
-    // regular clipboard, reading from there gives the same effect.
-    // preventDefault on mousedown blocks the browser's autoscroll/middle-
-    // button gesture on Windows/Linux.
+    // Middle-click paste. On macOS/Windows there's no native middle-click
+    // primary-selection paste, so we synthesize one: copy-on-select keeps the
+    // latest selection in the regular clipboard, and reading from there gives
+    // the same effect. preventDefault on mousedown blocks the browser's
+    // autoscroll/middle-button gesture.
+    // On Linux/WebKitGTK the webview already performs a native middle-click
+    // primary-selection paste into xterm's textarea, so doing it ourselves
+    // would paste twice. We still preventDefault (to suppress autoscroll) but
+    // skip the manual paste and let the native one through.
     const onMouseDown = (e: MouseEvent) => {
       if (e.button !== 1) return;
       e.preventDefault();
+      if (IS_LINUX) return;
       void readClipboard()
         .then((text) => {
           if (text) xterm.paste(text);
