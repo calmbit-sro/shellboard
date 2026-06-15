@@ -591,46 +591,25 @@
   cursor: pointer;
 }
 
-/* ── Shortcuts list ──────────────────────────────────────────────────── */
+/* ── Shortcuts editor ────────────────────────────────────────────────── */
 
-.shortcuts-list__note {
-  margin: 0 0 12px;
-  font-size: 12px;
+.shortcuts-edit__group {
+  margin-bottom: 14px;
+}
+
+.shortcuts-edit__heading {
+  margin: 0 0 2px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
   color: var(--muted);
 }
 
-.shortcuts-list__note code {
-  background: var(--bg-3);
-  padding: 0 4px;
-  border-radius: 3px;
-  font-family: var(--font-mono);
+.shortcuts-edit__note {
+  margin: 10px 0 0;
   font-size: 11px;
-}
-
-.shortcuts-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-
-.shortcuts-table td {
-  padding: 7px 0;
-  border-top: 1px solid var(--line-faint);
-  vertical-align: top;
-}
-
-.shortcuts-table tr:first-child td {
-  border-top: none;
-}
-
-.shortcuts-table__keys {
-  width: 1%;
-  white-space: nowrap;
-  padding-right: 16px;
-}
-
-.shortcuts-table__action {
-  color: var(--fg-2);
+  line-height: 1.5;
+  color: var(--muted);
 }
 
 /* ── About pane ──────────────────────────────────────────────────────── */

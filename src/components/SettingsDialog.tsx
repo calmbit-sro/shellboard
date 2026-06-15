@@ -15,6 +15,14 @@ import {
 } from "../store/appStore";
 import { findTheme, THEMES } from "../utils/themes";
 import { Cog, Folder, Search, Terminal as TerminalIcon } from "./icons";
+import { ShortcutInput } from "./ShortcutInput";
+import { bindingKey, shortcutCapture, type Binding } from "../shortcuts/binding";
+import {
+  DEFAULT_BINDINGS,
+  resolveBindings,
+  SHORTCUT_ACTIONS,
+  SHORTCUT_CATEGORIES,
+} from "../shortcuts/registry";
 import "./SettingsDialog.css";
 
 type SettingsDialogProps = {
@@ -81,27 +89,6 @@ const FONT_PRESETS = [
   { label: "Source Code Pro", value: '"Source Code Pro", monospace' },
 ];
 
-const SHORTCUTS: ReadonlyArray<{
-  keys: string;
-  action: string;
-}> = [
-  { keys: "Cmd/Ctrl+T", action: "New tab in active project" },
-  { keys: "Cmd/Ctrl+W", action: "Close active tab" },
-  { keys: "Cmd/Ctrl+Shift+W", action: "Close active split panel" },
-  { keys: "Cmd/Ctrl+D", action: "Split vertical (new panel right)" },
-  { keys: "Cmd/Ctrl+Shift+D", action: "Split horizontal (new panel down)" },
-  { keys: "Cmd/Ctrl+Shift+Arrows", action: "Split in arrow direction (left/right/up/down)" },
-  { keys: "Cmd/Ctrl+Tab / Shift+Tab", action: "Next / previous tab in project" },
-  { keys: "Cmd+Shift+] / Cmd+Shift+[", action: "Next / previous tab (macOS alias)" },
-  { keys: "Cmd/Ctrl+1..9", action: "Jump to tab N (within project)" },
-  { keys: "Cmd/Ctrl+Alt+Arrows", action: "Move focus between split panels" },
-  { keys: "Cmd/Ctrl+B", action: "Hide / show sidebar" },
-  { keys: "Cmd/Ctrl+F", action: "Find in focused terminal" },
-  { keys: "Cmd/Ctrl+Shift+F", action: "Global search across terminals" },
-  { keys: "Cmd/Ctrl+,", action: "Open settings" },
-  { keys: "Cmd/Ctrl+K (or Cmd/Ctrl+Shift+P)", action: "Open command palette" },
-];
-
 const SHELLBOARD_PALETTE = [
   "#181a1f",
   "#3a3d46",
@@ -126,6 +113,8 @@ export function SettingsDialog({
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
+      // A shortcut is being recorded — let ShortcutInput own every key.
+      if (shortcutCapture.isActive()) return;
       if (e.key === "Escape") {
         e.preventDefault();
         if (query) setQuery("");
@@ -309,7 +298,7 @@ function SectionPane({ id }: { id: SectionId }) {
       return (
         <SectionHeader
           title="Shortcuts"
-          subtitle="Read-only for now. Editing is on the roadmap."
+          subtitle="Click a shortcut to record a new combo. ⌫ resets it to the default; Esc cancels."
         >
           <ShortcutsList />
         </SectionHeader>
@@ -861,23 +850,68 @@ function ShellArgsField({ section }: { section?: string } = {}) {
 }
 
 function ShortcutsList() {
+  const keybindings = useAppStore((s) => s.settings.keybindings);
+  const resolved = useMemo(() => resolveBindings(keybindings), [keybindings]);
+
+  // Group bindings by their stable key to flag combos shared by 2+ actions.
+  const conflicts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const action of SHORTCUT_ACTIONS) {
+      const k = bindingKey(resolved[action.id]);
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+    return counts;
+  }, [resolved]);
+
+  function setBinding(id: string, next: Binding) {
+    void useAppStore.getState().updateSettings({
+      keybindings: { ...keybindings, [id]: next },
+    });
+  }
+
+  function resetBinding(id: string) {
+    const next = { ...keybindings };
+    delete next[id];
+    void useAppStore.getState().updateSettings({ keybindings: next });
+  }
+
   return (
-    <div className="shortcuts-list">
-      <p className="shortcuts-list__note">
-        <code>Cmd</code> on macOS, <code>Ctrl</code> elsewhere.
+    <div className="shortcuts-edit">
+      {SHORTCUT_CATEGORIES.map((category) => {
+        const actions = SHORTCUT_ACTIONS.filter((a) => a.category === category);
+        if (actions.length === 0) return null;
+        return (
+          <div key={category} className="shortcuts-edit__group">
+            <h3 className="shortcuts-edit__heading">{category}</h3>
+            {actions.map((action) => {
+              const binding = resolved[action.id];
+              const overridden =
+                bindingKey(binding) !== bindingKey(DEFAULT_BINDINGS[action.id]);
+              const conflict = (conflicts.get(bindingKey(binding)) ?? 0) > 1;
+              return (
+                <FieldRow
+                  key={action.id}
+                  label={action.label}
+                  hint={conflict ? "Used by another action" : undefined}
+                >
+                  <ShortcutInput
+                    value={binding}
+                    overridden={overridden}
+                    conflict={conflict}
+                    onChange={(b) => setBinding(action.id, b)}
+                    onReset={() => resetBinding(action.id)}
+                  />
+                </FieldRow>
+              );
+            })}
+          </div>
+        );
+      })}
+      <p className="shortcuts-edit__note">
+        Tab numbers (<kbd className="kbd">Cmd/Ctrl+1…9</kbd>) and the command
+        palette alias (<kbd className="kbd">Cmd/Ctrl+Shift+P</kbd>) are fixed.
+        Copy/paste and link-click live in the terminal itself.
       </p>
-      <table className="shortcuts-table">
-        <tbody>
-          {SHORTCUTS.map((s) => (
-            <tr key={s.keys}>
-              <td className="shortcuts-table__keys">
-                <kbd className="kbd">{s.keys}</kbd>
-              </td>
-              <td className="shortcuts-table__action">{s.action}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }
@@ -1050,6 +1084,19 @@ const SEARCH_INDEX: ReadonlyArray<SearchEntry> = [
     label: "Shell arguments",
     keywords: "shell arguments login -l flags",
     render: (s) => <ShellArgsField section={s} />,
+  },
+  {
+    id: "keybindings",
+    section: "shortcuts",
+    sectionLabel: "Shortcuts",
+    label: "Keyboard shortcuts",
+    keywords:
+      "shortcut shortcuts keybinding keybindings hotkey rebind key combo recent terminal switcher ctrl tab",
+    render: () => (
+      <FieldRow label="Keyboard shortcuts" hint="Rebind any action — click the section chip to open.">
+        <span />
+      </FieldRow>
+    ),
   },
 ];
 

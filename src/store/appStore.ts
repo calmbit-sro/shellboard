@@ -28,6 +28,8 @@ import {
 } from "../utils/sessionSerialize";
 import { flushAllWrites } from "../utils/terminalRegistry";
 import { DEFAULT_THEME_ID, findTheme } from "../utils/themes";
+import { isValidBinding, type Binding } from "../shortcuts/binding";
+import { isKnownActionId } from "../shortcuts/registry";
 
 export type TerminalSession = {
   id: string;
@@ -112,6 +114,10 @@ export type Settings = {
   /** Show the project-count badge next to each group header in the
    * sidebar. Off = the chip is hidden, name takes the freed space. */
   showGroupCount: boolean;
+  /** User keyboard-shortcut overrides, keyed by action id (see
+   * src/shortcuts/registry.ts). Only overrides are stored; any id absent here
+   * falls back to its default binding. Unknown ids are dropped on load. */
+  keybindings: Record<string, Binding>;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -128,6 +134,7 @@ export const DEFAULT_SETTINGS: Settings = {
   persistScrollback: true,
   showPanelHeader: true,
   showGroupCount: true,
+  keybindings: {},
 };
 
 export const SETTINGS_LIMITS = {
@@ -186,6 +193,15 @@ type AppState = {
    * Session-only — not persisted. Used by the command palette to surface
    * recently-used terminals as quick jump targets. Most recent first. */
   recentLeafIds: string[];
+  /** Transient alt-tab session for the recent-terminal switcher. Non-null only
+   * while the user is holding the switcher modifier and cycling. `order` is a
+   * frozen snapshot of recentLeafIds (alive leaves) so stepping doesn't reshuffle
+   * the list mid-cycle; `mods` records which modifiers must be released to commit. */
+  switcher: {
+    order: string[];
+    index: number;
+    mods: Pick<Binding, "meta" | "ctrl" | "alt">;
+  } | null;
 
   hydrate: (data: {
     projects?: Project[];
@@ -240,6 +256,19 @@ type AppState = {
    * in. Used by the command palette's "Recent terminals" list. No-op if
    * the leaf is no longer alive. */
   revealTerminal: (leafId: string) => Promise<void>;
+
+  /** Open the alt-tab switcher: snapshot recent terminals and select the
+   * next/previous one. No-op when fewer than 2 alive terminals exist. */
+  openSwitcher: (
+    direction: "next" | "prev",
+    mods: Pick<Binding, "meta" | "ctrl" | "alt">,
+  ) => void;
+  /** Advance the switcher selection while it's open (wraps). */
+  stepSwitcher: (direction: "next" | "prev") => void;
+  /** Commit the current switcher selection (jumps to it) and close. */
+  commitSwitcher: () => void;
+  /** Close the switcher without navigating. */
+  cancelSwitcher: () => void;
 
   addProject: (
     p: Omit<Project, "id" | "createdAt" | "groupId"> & {
@@ -361,7 +390,19 @@ function clampSettings(s: Partial<Settings>): Settings {
       typeof s.showGroupCount === "boolean"
         ? s.showGroupCount
         : DEFAULT_SETTINGS.showGroupCount,
+    keybindings: clampKeybindings(s.keybindings),
   };
+}
+
+// Keep only well-formed overrides for known action ids. A renamed/removed
+// action or a malformed value must never break load — it's silently dropped.
+function clampKeybindings(v: unknown): Record<string, Binding> {
+  if (typeof v !== "object" || v === null) return {};
+  const out: Record<string, Binding> = {};
+  for (const [id, b] of Object.entries(v as Record<string, unknown>)) {
+    if (isKnownActionId(id) && isValidBinding(b)) out[id] = b;
+  }
+  return out;
 }
 
 function uuid(): string {
@@ -427,6 +468,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   pendingBuffers: {},
   updateInfo: null,
   recentLeafIds: [],
+  switcher: null,
 
   hydrate: (data) =>
     set((state) => {
@@ -953,6 +995,38 @@ export const useAppStore = create<AppState>()((set, get) => ({
       recentLeafIds: bumpRecent(s.recentLeafIds, leafId),
     }));
   },
+
+  openSwitcher: (direction, mods) => {
+    const state = get();
+    // Frozen snapshot of alive recent leaves, most-recent first. recentLeafIds[0]
+    // is the terminal we're currently on; the first hop should land on the next
+    // one, hence index 1 for "next" and the last entry for "prev".
+    const order = state.recentLeafIds.filter((id) => !!state.terminals[id]);
+    if (order.length < 2) return;
+    const index = direction === "next" ? 1 : order.length - 1;
+    set({ switcher: { order, index, mods } });
+  },
+
+  stepSwitcher: (direction) => {
+    const sw = get().switcher;
+    if (!sw) return;
+    const n = sw.order.length;
+    const index =
+      direction === "next" ? (sw.index + 1) % n : (sw.index - 1 + n) % n;
+    set({ switcher: { ...sw, index } });
+  },
+
+  commitSwitcher: () => {
+    const sw = get().switcher;
+    set({ switcher: null });
+    if (!sw) return;
+    const target = sw.order[sw.index];
+    // revealTerminal is the single place that bumps recentLeafIds — so the MRU
+    // only reshuffles on commit, never mid-cycle.
+    if (target) void get().revealTerminal(target);
+  },
+
+  cancelSwitcher: () => set({ switcher: null }),
 
   addProject: async (p) => {
     const project: Project = {

@@ -10,6 +10,13 @@ import { AboutDialog } from "./components/AboutDialog";
 import { StatusBar } from "./components/StatusBar";
 import { GlobalSearch } from "./components/GlobalSearch";
 import { ShortcutsDialog } from "./components/ShortcutsDialog";
+import { RecentSwitcher } from "./components/RecentSwitcher";
+import {
+  bindingMods,
+  matchBinding,
+  shortcutCapture,
+} from "./shortcuts/binding";
+import { resolveBindings, SHORTCUT_ACTIONS } from "./shortcuts/registry";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
   enableSessionAutosave,
@@ -87,6 +94,18 @@ function App() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
+  // Mirror modal-open state into a ref so the stable (empty-deps) keydown
+  // handler can tell whether a dialog is up without re-subscribing. Used to
+  // suppress the recent-terminal switcher overlay while a modal is focused.
+  const modalOpenRef = useRef(false);
+  modalOpenRef.current =
+    settingsOpen ||
+    paletteOpen ||
+    addProjectOpen ||
+    aboutOpen ||
+    globalSearchOpen ||
+    shortcutsOpen;
 
   useEffect(() => {
     document.documentElement.style.setProperty(
@@ -227,235 +246,193 @@ function App() {
   }, []);
 
   useEffect(() => {
+    // The active panel's leaf, falling back to the first leaf in the tab.
+    function activeAnchor(): string | null {
+      const store = useAppStore.getState();
+      const tab = store.tabs.find((t) => t.id === store.activeTabId);
+      return (
+        tab?.focusedLeafId ?? (tab?.mosaic ? firstLeafOf(tab.mosaic) : null)
+      );
+    }
+
+    function zoom(delta: 1 | -1 | 0): void {
+      const store = useAppStore.getState();
+      const current = store.settings.terminalFontSize;
+      const next =
+        delta === 0
+          ? DEFAULT_SETTINGS.terminalFontSize
+          : Math.max(
+              SETTINGS_LIMITS.terminalFontSize.min,
+              Math.min(SETTINGS_LIMITS.terminalFontSize.max, current + delta),
+            );
+      if (next !== current) void store.updateSettings({ terminalFontSize: next });
+    }
+
+    // One handler per registry action id. The registry owns ids / labels /
+    // default bindings; behavior lives here. Handlers read fresh store state
+    // via getState() and may use the (stable) dialog-open setters. The two
+    // switcher ids are handled specially in onKey, not via this map.
+    const handlers: Record<string, () => void> = {
+      "tab.new": () => void useAppStore.getState().addTab(),
+      "tab.close": () => {
+        const store = useAppStore.getState();
+        if (store.activeTabId) void store.closeTab(store.activeTabId);
+      },
+      "panel.close": () => void useAppStore.getState().closeActivePanel(),
+      "tab.next": () => useAppStore.getState().nextTab(),
+      "tab.prev": () => useAppStore.getState().prevTab(),
+      "split.vertical": () =>
+        void useAppStore.getState().splitActiveTerminal("row"),
+      "split.horizontal": () =>
+        void useAppStore.getState().splitActiveTerminal("column"),
+      "split.left": () => {
+        const a = activeAnchor();
+        if (a) void useAppStore.getState().splitPanel(a, "left");
+      },
+      "split.right": () => {
+        const a = activeAnchor();
+        if (a) void useAppStore.getState().splitPanel(a, "right");
+      },
+      "split.up": () => {
+        const a = activeAnchor();
+        if (a) void useAppStore.getState().splitPanel(a, "up");
+      },
+      "split.down": () => {
+        const a = activeAnchor();
+        if (a) void useAppStore.getState().splitPanel(a, "down");
+      },
+      "focus.left": () => useAppStore.getState().moveFocus("left"),
+      "focus.right": () => useAppStore.getState().moveFocus("right"),
+      "focus.up": () => useAppStore.getState().moveFocus("up"),
+      "focus.down": () => useAppStore.getState().moveFocus("down"),
+      "search.terminal": () => {
+        const store = useAppStore.getState();
+        const tab = store.tabs.find((t) => t.id === store.activeTabId);
+        if (tab?.focusedLeafId) store.setSearchingTerminal(tab.focusedLeafId);
+      },
+      "search.global": () => setGlobalSearchOpen(true),
+      "zoom.in": () => zoom(1),
+      "zoom.out": () => zoom(-1),
+      "zoom.reset": () => zoom(0),
+      // Cmd/Ctrl+N — quick-add the focused terminal's cwd as an ungrouped
+      // project. Caption shows `parent/basename` and tracks cwd via OSC 7.
+      "project.quickAdd": () => {
+        const store = useAppStore.getState();
+        const leafId = activeAnchor();
+        const cwd = leafId ? store.terminals[leafId]?.cwd : undefined;
+        if (!cwd) return;
+        void (async () => {
+          const project = await store.addProject({
+            path: cwd,
+            name: cwdLabel(cwd),
+            color: randomProjectColor(),
+            autoCwdName: true,
+          });
+          await store.openProject(project.id);
+        })();
+      },
+      "sidebar.toggle": () => void useAppStore.getState().toggleSidebar(),
+      "settings.open": () => setSettingsOpen(true),
+      "palette.open": () => setPaletteOpen(true),
+    };
+
     function onKey(e: KeyboardEvent) {
-      // `?` opens the shortcut cheat sheet — skip when the user is typing
-      // into an input / editable element.
+      // A ShortcutInput is recording a combo — stand down entirely so the
+      // captured keys don't also trigger their action.
+      if (shortcutCapture.isActive()) return;
+
+      // `?` opens the shortcut cheat sheet — non-modifier, skip when typing.
       if (e.key === "?" && !isEditable(e.target)) {
         e.preventDefault();
         setShortcutsOpen(true);
         return;
       }
-      // App shortcuts use Cmd on macOS and Ctrl on Linux/Windows — NOT both.
-      // Leaving plain Ctrl to the shell (Ctrl+W = delete word, Ctrl+T =
-      // transpose chars, etc.) is the convention used by iTerm2, Alacritty,
-      // Warp. On Linux/Windows the Cmd key doesn't exist, so we rely on
-      // Ctrl and accept the (rare) conflict with terminal bindings.
+
+      const resolved = resolveBindings(
+        useAppStore.getState().settings.keybindings,
+      );
+
+      // Recent-terminal switcher (alt-tab). Open on first press, step on
+      // repeats while held. Suppressed while a modal is up so the overlay
+      // never stacks over a dialog.
+      if (!modalOpenRef.current) {
+        for (const dir of ["next", "prev"] as const) {
+          const b = resolved[`switcher.${dir}`];
+          if (b && matchBinding(e, b)) {
+            e.preventDefault();
+            const store = useAppStore.getState();
+            if (store.switcher) store.stepSwitcher(dir);
+            else store.openSwitcher(dir, bindingMods(b));
+            return;
+          }
+        }
+      }
+
+      // While cycling, Escape cancels and every other key is swallowed so a
+      // stray combo can't fire mid-cycle. The actual commit is on key release.
+      if (useAppStore.getState().switcher) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          useAppStore.getState().cancelSwitcher();
+        }
+        return;
+      }
+
+      // Generic registry dispatch — first action whose binding matches wins.
+      for (const action of SHORTCUT_ACTIONS) {
+        if (action.id === "switcher.next" || action.id === "switcher.prev") {
+          continue;
+        }
+        const b = resolved[action.id];
+        if (b && matchBinding(e, b)) {
+          const handler = handlers[action.id];
+          if (handler) {
+            e.preventDefault();
+            handler();
+          }
+          return;
+        }
+      }
+
+      // Fixed (non-rebindable) accelerators. Cmd on macOS / Ctrl elsewhere.
       const mod = IS_MAC
         ? e.metaKey && !e.ctrlKey
         : e.ctrlKey && !e.metaKey;
-      if (!mod) return;
-      const store = useAppStore.getState();
-
-      if ((e.key === "w" || e.key === "W") && e.shiftKey && !e.altKey) {
-        e.preventDefault();
-        void store.closeActivePanel();
-        return;
-      }
-      if ((e.key === "w" || e.key === "W") && !e.shiftKey && !e.altKey) {
-        e.preventDefault();
-        if (store.activeTabId) void store.closeTab(store.activeTabId);
-        return;
-      }
-
-      if ((e.key === "d" || e.key === "D") && e.shiftKey && !e.altKey) {
-        e.preventDefault();
-        void store.splitActiveTerminal("column");
-        return;
-      }
-      if ((e.key === "d" || e.key === "D") && !e.shiftKey && !e.altKey) {
-        e.preventDefault();
-        void store.splitActiveTerminal("row");
-        return;
-      }
-
-      if ((e.key === "t" || e.key === "T") && !e.shiftKey && !e.altKey) {
-        e.preventDefault();
-        void store.addTab();
-        return;
-      }
-
-      // Cmd/Ctrl+N — quick-add the focused terminal's cwd as an
-      // ungrouped project. Caption shows `parent/basename` and tracks
-      // the active panel's cwd via OSC 7.
-      if ((e.key === "n" || e.key === "N") && !e.shiftKey && !e.altKey) {
-        e.preventDefault();
-        const tab = store.tabs.find((t) => t.id === store.activeTabId);
-        const leafId =
-          tab?.focusedLeafId ??
-          (tab?.mosaic ? firstLeafOf(tab.mosaic) : null);
-        const cwd = leafId ? store.terminals[leafId]?.cwd : undefined;
-        if (cwd) {
-          void (async () => {
-            const project = await store.addProject({
-              path: cwd,
-              name: cwdLabel(cwd),
-              color: randomProjectColor(),
-              autoCwdName: true,
-            });
-            await store.openProject(project.id);
-          })();
-        }
-        return;
-      }
-
-      // Cmd/Ctrl+, — open settings
-      if (e.key === "," && !e.shiftKey && !e.altKey) {
-        e.preventDefault();
-        setSettingsOpen(true);
-        return;
-      }
-
-      // Cmd/Ctrl+K (and the Cmd+Shift+P alias) — open command palette.
-      // Cmd+K matches the visible hint pill in the topbar; Shift+P is the
-      // VS Code muscle-memory alias.
-      if (
-        (e.key === "k" || e.key === "K") &&
-        !e.shiftKey &&
-        !e.altKey
-      ) {
+      if (!mod || e.altKey) return;
+      // Cmd/Ctrl+Shift+P — command palette alias (Cmd/Ctrl+K is editable).
+      if (e.shiftKey && e.code === "KeyP") {
         e.preventDefault();
         setPaletteOpen(true);
         return;
       }
-      if ((e.key === "p" || e.key === "P") && e.shiftKey && !e.altKey) {
+      // Cmd/Ctrl+1..9 — jump to tab N within the active project.
+      if (!e.shiftKey && /^Digit[1-9]$/.test(e.code)) {
         e.preventDefault();
-        setPaletteOpen(true);
-        return;
-      }
-
-      // Cmd/Ctrl+B — toggle sidebar
-      if ((e.key === "b" || e.key === "B") && !e.shiftKey && !e.altKey) {
-        e.preventDefault();
-        void store.toggleSidebar();
-        return;
-      }
-
-      // Cmd/Ctrl+= / Cmd/Ctrl+- — zoom terminal font size up/down.
-      // Cmd/Ctrl+0 — reset.
-      if (!e.shiftKey && !e.altKey) {
-        if (e.key === "=" || e.key === "+") {
-          e.preventDefault();
-          const current = store.settings.terminalFontSize;
-          const next = Math.min(
-            SETTINGS_LIMITS.terminalFontSize.max,
-            current + 1,
-          );
-          if (next !== current) void store.updateSettings({ terminalFontSize: next });
-          return;
-        }
-        if (e.key === "-" || e.key === "_") {
-          e.preventDefault();
-          const current = store.settings.terminalFontSize;
-          const next = Math.max(
-            SETTINGS_LIMITS.terminalFontSize.min,
-            current - 1,
-          );
-          if (next !== current) void store.updateSettings({ terminalFontSize: next });
-          return;
-        }
-        if (e.key === "0") {
-          e.preventDefault();
-          void store.updateSettings({
-            terminalFontSize: DEFAULT_SETTINGS.terminalFontSize,
-          });
-          return;
-        }
-      }
-
-      // Cmd/Ctrl+Shift+F — global search across all terminals
-      if ((e.key === "f" || e.key === "F") && e.shiftKey && !e.altKey) {
-        e.preventDefault();
-        setGlobalSearchOpen(true);
-        return;
-      }
-
-      // Cmd/Ctrl+F — open terminal search on the focused panel
-      if ((e.key === "f" || e.key === "F") && !e.shiftKey && !e.altKey) {
-        const tab = store.tabs.find((t) => t.id === store.activeTabId);
-        const leafId = tab?.focusedLeafId;
-        if (leafId) {
-          e.preventDefault();
-          store.setSearchingTerminal(leafId);
-        }
-        return;
-      }
-
-      if (e.altKey && !e.shiftKey) {
-        if (e.key === "ArrowLeft") {
-          e.preventDefault();
-          store.moveFocus("left");
-          return;
-        }
-        if (e.key === "ArrowRight") {
-          e.preventDefault();
-          store.moveFocus("right");
-          return;
-        }
-        if (e.key === "ArrowUp") {
-          e.preventDefault();
-          store.moveFocus("up");
-          return;
-        }
-        if (e.key === "ArrowDown") {
-          e.preventDefault();
-          store.moveFocus("down");
-          return;
-        }
-      }
-
-      // Cmd/Ctrl+Shift+Arrow — split the focused panel in the arrow's
-      // direction. Mirrors Cmd+Alt+Arrow (move focus): Alt = go there,
-      // Shift = create there. Cmd+D / Cmd+Shift+D remain as iTerm2 aliases
-      // for the two most-used splits (right / down).
-      if (e.shiftKey && !e.altKey) {
-        const side =
-          e.key === "ArrowLeft"
-            ? "left"
-            : e.key === "ArrowRight"
-              ? "right"
-              : e.key === "ArrowUp"
-                ? "up"
-                : e.key === "ArrowDown"
-                  ? "down"
-                  : null;
-        if (side) {
-          e.preventDefault();
-          const tab = store.tabs.find((t) => t.id === store.activeTabId);
-          const anchor =
-            tab?.focusedLeafId ??
-            (tab?.mosaic ? firstLeafOf(tab.mosaic) : null);
-          if (anchor) void store.splitPanel(anchor, side);
-          return;
-        }
-      }
-
-      if (e.key === "Tab") {
-        e.preventDefault();
-        if (e.shiftKey) store.prevTab();
-        else store.nextTab();
-        return;
-      }
-
-      if (e.shiftKey && (e.key === "]" || e.code === "BracketRight")) {
-        e.preventDefault();
-        store.nextTab();
-        return;
-      }
-      if (e.shiftKey && (e.key === "[" || e.code === "BracketLeft")) {
-        e.preventDefault();
-        store.prevTab();
-        return;
-      }
-
-      if (!e.shiftKey && !e.altKey && /^[1-9]$/.test(e.key)) {
-        e.preventDefault();
-        store.activateTabByIndex(parseInt(e.key, 10) - 1);
+        useAppStore
+          .getState()
+          .activateTabByIndex(parseInt(e.code.slice(5), 10) - 1);
         return;
       }
     }
 
+    // Commit the switcher when the user releases its modifier(s).
+    function onKeyUp(e: KeyboardEvent) {
+      const store = useAppStore.getState();
+      const sw = store.switcher;
+      if (!sw) return;
+      const stillHeld =
+        (sw.mods.meta && e.metaKey) ||
+        (sw.mods.ctrl && e.ctrlKey) ||
+        (sw.mods.alt && e.altKey);
+      if (!stillHeld) store.commitSwitcher();
+    }
+
     window.addEventListener("keydown", onKey, { capture: true });
-    return () => window.removeEventListener("keydown", onKey, { capture: true });
+    window.addEventListener("keyup", onKeyUp, { capture: true });
+    return () => {
+      window.removeEventListener("keydown", onKey, { capture: true });
+      window.removeEventListener("keyup", onKeyUp, { capture: true });
+    };
   }, []);
 
   return (
@@ -537,6 +514,7 @@ function App() {
         open={shortcutsOpen}
         onClose={() => setShortcutsOpen(false)}
       />
+      <RecentSwitcher />
     </div>
   );
 }
