@@ -1,0 +1,84 @@
+.switcher-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.32);
+  /* Purely informational — clicks pass through; commit is on key release. */
+  pointer-events: none;
+}
+
+.switcher {
+  min-width: 360px;
+  max-width: 560px;
+  max-height: 70vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  background: var(--theme-chrome, #25262b);
+  border: 1px solid var(--theme-border, rgba(255, 255, 255, 0.14));
+  color: var(--theme-fg, #d4d4d4);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5);
+}
+
+.switcher__title {
+  padding: 10px 14px 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  opacity: 0.5;
+}
+
+.switcher__list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+}
+
+.switcher__row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.switcher__row.is-active {
+  background: rgba(122, 168, 232, 0.22);
+}
+
+.switcher__dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.switcher__label {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.switcher__cwd {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+  font-size: 11px;
+  opacity: 0.55;
+}
+
+.switcher__hint {
+  padding: 7px 14px 9px;
+  font-size: 11px;
+  opacity: 0.45;
+  border-top: 1px solid var(--theme-border, rgba(255, 255, 255, 0.1));
+}
