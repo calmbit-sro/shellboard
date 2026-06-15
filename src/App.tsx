@@ -337,13 +337,23 @@ function App() {
     };
 
     function onKey(e: KeyboardEvent) {
+      // We consumed this key — stop the browser default AND stop propagation
+      // so the event never reaches xterm's hidden <textarea> (a capture-phase
+      // window listener fires before it). preventDefault alone leaves the key
+      // free to flow down to xterm, which writes it to the PTY — that's why
+      // Ctrl-based shortcuts like the switcher leaked into the terminal.
+      const consume = () => {
+        e.preventDefault();
+        e.stopPropagation();
+      };
+
       // A ShortcutInput is recording a combo — stand down entirely so the
       // captured keys don't also trigger their action.
       if (shortcutCapture.isActive()) return;
 
       // `?` opens the shortcut cheat sheet — non-modifier, skip when typing.
       if (e.key === "?" && !isEditable(e.target)) {
-        e.preventDefault();
+        consume();
         setShortcutsOpen(true);
         return;
       }
@@ -359,7 +369,7 @@ function App() {
         for (const dir of ["next", "prev"] as const) {
           const b = resolved[`switcher.${dir}`];
           if (b && matchBinding(e, b)) {
-            e.preventDefault();
+            consume();
             const store = useAppStore.getState();
             if (store.switcher) store.stepSwitcher(dir);
             else store.openSwitcher(dir, bindingMods(b));
@@ -372,9 +382,11 @@ function App() {
       // stray combo can't fire mid-cycle. The actual commit is on key release.
       if (useAppStore.getState().switcher) {
         if (e.key === "Escape") {
-          e.preventDefault();
           useAppStore.getState().cancelSwitcher();
         }
+        // Swallow everything while cycling so no key (Escape, a stray combo, or
+        // plain text) reaches the terminal mid-cycle. Commit happens on keyup.
+        consume();
         return;
       }
 
@@ -387,7 +399,7 @@ function App() {
         if (b && matchBinding(e, b)) {
           const handler = handlers[action.id];
           if (handler) {
-            e.preventDefault();
+            consume();
             handler();
           }
           return;
@@ -401,13 +413,13 @@ function App() {
       if (!mod || e.altKey) return;
       // Cmd/Ctrl+Shift+P — command palette alias (Cmd/Ctrl+K is editable).
       if (e.shiftKey && e.code === "KeyP") {
-        e.preventDefault();
+        consume();
         setPaletteOpen(true);
         return;
       }
       // Cmd/Ctrl+1..9 — jump to tab N within the active project.
       if (!e.shiftKey && /^Digit[1-9]$/.test(e.code)) {
-        e.preventDefault();
+        consume();
         useAppStore
           .getState()
           .activateTabByIndex(parseInt(e.code.slice(5), 10) - 1);
