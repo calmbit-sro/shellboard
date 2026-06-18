@@ -5,6 +5,33 @@ All notable changes to Shellboard will be documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] — 2026-06-18
+
+A small follow-up release: a cross-project recent-terminal switcher,
+customisable keyboard shortcuts that actually take effect, and a couple
+of platform fixes. Settings on disk stay compatible — no migration.
+
+### Added
+
+- **Recent-terminal switcher.** An alt-tab-style overlay that cycles
+  through the most-recently focused terminals across all projects and
+  tabs. Hold the modifier, tap to move down the list, release to jump
+  straight to that project · tab · panel.
+- **Customisable keyboard shortcuts.** Settings → Shortcuts now lets you
+  rebind actions with a live key recorder; bindings are stored per action
+  and applied at runtime. Backed by a new shortcut registry + binding
+  layer rather than hard-coded handlers.
+- **Smarter colour for new projects.** New projects now pick an unused
+  colour from the palette instead of a random (possibly duplicate) one,
+  falling back to a generated colour only once the palette is exhausted.
+
+### Fixed
+
+- **Double paste on middle-click (Linux).** On Linux/WebKitGTK the webview
+  already performs a native primary-selection paste, so the manual paste
+  was running twice. We now skip the synthetic paste on Linux (still
+  suppressing autoscroll) and let the native one through.
+
 ## [2.0.0] — 2026-05-18
 
 A full visual overhaul plus several quality-of-life features. Settings on
