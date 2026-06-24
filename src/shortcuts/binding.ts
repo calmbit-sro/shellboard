@@ -159,6 +159,36 @@ export function formatBinding(b: Binding): string {
   return [...parts, displayKey(b.key)].join("+");
 }
 
+// Binding key token → Tauri/muda accelerator key token. Letters uppercase;
+// punctuation passes through (muda accepts the literal char); arrows shorten.
+function accelKey(key: string): string {
+  switch (key) {
+    case "ArrowLeft":
+      return "Left";
+    case "ArrowRight":
+      return "Right";
+    case "ArrowUp":
+      return "Up";
+    case "ArrowDown":
+      return "Down";
+    default:
+      return key.length === 1 ? key.toUpperCase() : key;
+  }
+}
+
+/** A Tauri/muda accelerator string for this binding (e.g. "Super+Shift+]"), used
+ *  to show a native, right-aligned accelerator in the macOS menu. Modifiers are
+ *  literal; `meta` maps to "Super" (the Command key on macOS). */
+export function bindingToAccelerator(b: Binding): string {
+  const parts: string[] = [];
+  if (b.ctrl) parts.push("Ctrl");
+  if (b.alt) parts.push("Alt");
+  if (b.shift) parts.push("Shift");
+  if (b.meta) parts.push("Super");
+  parts.push(accelKey(b.key));
+  return parts.join("+");
+}
+
 // ── Capture coordination ─────────────────────────────────────────────────
 // While a ShortcutInput is recording a combo, the global App dispatcher must
 // stand down so capturing e.g. Cmd+T doesn't also open a new tab. ShortcutInput

@@ -152,6 +152,19 @@ export function TopBar({ onOpenPalette }: TopBarProps) {
     }
   };
 
+  // The native menu's "Toggle Light/Dark Chrome" item dispatches this event so
+  // it reuses the exact toggle above without lifting its localStorage / per-mode
+  // logic out of the component. A ref keeps the listener calling the latest
+  // closure without re-subscribing on every render.
+  const toggleRef = useRef(toggleChromeTheme);
+  toggleRef.current = toggleChromeTheme;
+  useEffect(() => {
+    const handler = () => toggleRef.current();
+    window.addEventListener("shellboard:toggle-chrome-theme", handler);
+    return () =>
+      window.removeEventListener("shellboard:toggle-chrome-theme", handler);
+  }, []);
+
   return (
     <div className="topbar" data-tauri-drag-region>
       <div className="topbar__brand" data-tauri-drag-region>

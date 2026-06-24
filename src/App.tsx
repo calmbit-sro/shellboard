@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
 import { TabBar } from "./components/TabBar";
@@ -17,7 +17,13 @@ import {
   shortcutCapture,
 } from "./shortcuts/binding";
 import { resolveBindings, SHORTCUT_ACTIONS } from "./shortcuts/registry";
+import {
+  createActionHandlers,
+  pushMenuShortcuts,
+  type ActionContext,
+} from "./shortcuts/actions";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { listen } from "@tauri-apps/api/event";
 import {
   enableSessionAutosave,
   flushSessionSave,
@@ -33,11 +39,7 @@ import {
   PersistenceKeys,
 } from "./utils/persistence";
 import { findTheme } from "./utils/themes";
-import { firstLeafOf } from "./utils/mosaic";
-import { randomProjectColor } from "./components/ColorPicker";
-import { cwdLabel } from "./utils/path";
 import { checkForUpdate } from "./utils/updateCheck";
-import { DEFAULT_SETTINGS, SETTINGS_LIMITS } from "./store/appStore";
 import "./App.css";
 
 const IS_MAC =
@@ -82,6 +84,7 @@ function App() {
   const uiFontSize = useAppStore((s) => s.settings.uiFontSize);
   const themeId = useAppStore((s) => s.settings.terminalTheme);
   const sidebarVisible = useAppStore((s) => s.sidebarVisible);
+  const keybindings = useAppStore((s) => s.settings.keybindings);
   const initRan = useRef(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -106,6 +109,24 @@ function App() {
     aboutOpen ||
     globalSearchOpen ||
     shortcutsOpen;
+
+  // Modal-open callbacks shared by the keyboard dispatcher and the native-menu
+  // listener. useState setters are referentially stable, so an empty-deps memo
+  // yields one stable object — both effects can list it without re-subscribing.
+  const actionCtx = useMemo<ActionContext>(
+    () => ({
+      openSettings: () => setSettingsOpen(true),
+      openPalette: () => setPaletteOpen(true),
+      openAddProject: (groupId) => {
+        setAddProjectGroupId(groupId ?? null);
+        setAddProjectOpen(true);
+      },
+      openAbout: () => setAboutOpen(true),
+      openGlobalSearch: () => setGlobalSearchOpen(true),
+      openShortcuts: () => setShortcutsOpen(true),
+    }),
+    [],
+  );
 
   useEffect(() => {
     document.documentElement.style.setProperty(
@@ -246,95 +267,11 @@ function App() {
   }, []);
 
   useEffect(() => {
-    // The active panel's leaf, falling back to the first leaf in the tab.
-    function activeAnchor(): string | null {
-      const store = useAppStore.getState();
-      const tab = store.tabs.find((t) => t.id === store.activeTabId);
-      return (
-        tab?.focusedLeafId ?? (tab?.mosaic ? firstLeafOf(tab.mosaic) : null)
-      );
-    }
-
-    function zoom(delta: 1 | -1 | 0): void {
-      const store = useAppStore.getState();
-      const current = store.settings.terminalFontSize;
-      const next =
-        delta === 0
-          ? DEFAULT_SETTINGS.terminalFontSize
-          : Math.max(
-              SETTINGS_LIMITS.terminalFontSize.min,
-              Math.min(SETTINGS_LIMITS.terminalFontSize.max, current + delta),
-            );
-      if (next !== current) void store.updateSettings({ terminalFontSize: next });
-    }
-
-    // One handler per registry action id. The registry owns ids / labels /
-    // default bindings; behavior lives here. Handlers read fresh store state
-    // via getState() and may use the (stable) dialog-open setters. The two
-    // switcher ids are handled specially in onKey, not via this map.
-    const handlers: Record<string, () => void> = {
-      "tab.new": () => void useAppStore.getState().addTab(),
-      "tab.close": () => {
-        const store = useAppStore.getState();
-        if (store.activeTabId) void store.closeTab(store.activeTabId);
-      },
-      "panel.close": () => void useAppStore.getState().closeActivePanel(),
-      "tab.next": () => useAppStore.getState().nextTab(),
-      "tab.prev": () => useAppStore.getState().prevTab(),
-      "split.vertical": () =>
-        void useAppStore.getState().splitActiveTerminal("row"),
-      "split.horizontal": () =>
-        void useAppStore.getState().splitActiveTerminal("column"),
-      "split.left": () => {
-        const a = activeAnchor();
-        if (a) void useAppStore.getState().splitPanel(a, "left");
-      },
-      "split.right": () => {
-        const a = activeAnchor();
-        if (a) void useAppStore.getState().splitPanel(a, "right");
-      },
-      "split.up": () => {
-        const a = activeAnchor();
-        if (a) void useAppStore.getState().splitPanel(a, "up");
-      },
-      "split.down": () => {
-        const a = activeAnchor();
-        if (a) void useAppStore.getState().splitPanel(a, "down");
-      },
-      "focus.left": () => useAppStore.getState().moveFocus("left"),
-      "focus.right": () => useAppStore.getState().moveFocus("right"),
-      "focus.up": () => useAppStore.getState().moveFocus("up"),
-      "focus.down": () => useAppStore.getState().moveFocus("down"),
-      "search.terminal": () => {
-        const store = useAppStore.getState();
-        const tab = store.tabs.find((t) => t.id === store.activeTabId);
-        if (tab?.focusedLeafId) store.setSearchingTerminal(tab.focusedLeafId);
-      },
-      "search.global": () => setGlobalSearchOpen(true),
-      "zoom.in": () => zoom(1),
-      "zoom.out": () => zoom(-1),
-      "zoom.reset": () => zoom(0),
-      // Cmd/Ctrl+N — quick-add the focused terminal's cwd as an ungrouped
-      // project. Caption shows `parent/basename` and tracks cwd via OSC 7.
-      "project.quickAdd": () => {
-        const store = useAppStore.getState();
-        const leafId = activeAnchor();
-        const cwd = leafId ? store.terminals[leafId]?.cwd : undefined;
-        if (!cwd) return;
-        void (async () => {
-          const project = await store.addProject({
-            path: cwd,
-            name: cwdLabel(cwd),
-            color: randomProjectColor(),
-            autoCwdName: true,
-          });
-          await store.openProject(project.id);
-        })();
-      },
-      "sidebar.toggle": () => void useAppStore.getState().toggleSidebar(),
-      "settings.open": () => setSettingsOpen(true),
-      "palette.open": () => setPaletteOpen(true),
-    };
+    // Shared dispatch table (keyboard + native menu). Registry ids match
+    // shortcuts/registry.ts so the loop below can look them up; the extra
+    // menu-only ids are ignored here. The two switcher ids are handled
+    // specially in onKey, not via this map.
+    const handlers = createActionHandlers(actionCtx);
 
     function onKey(e: KeyboardEvent) {
       // We consumed this key — stop the browser default AND stop propagation
@@ -445,7 +382,32 @@ function App() {
       window.removeEventListener("keydown", onKey, { capture: true });
       window.removeEventListener("keyup", onKeyUp, { capture: true });
     };
-  }, []);
+  }, [actionCtx]);
+
+  // Native application menu (built in Rust) emits `menu://action` with an item
+  // id like "menu.tab.new". Strip the prefix and run the matching shared
+  // handler — the same behavior the keyboard shortcuts use. (macOS items show a
+  // real accelerator, but the webview consumes the key first so the JS shortcut
+  // dispatcher stays the source of truth; either path dispatches the same action
+  // exactly once.)
+  useEffect(() => {
+    const handlers = createActionHandlers(actionCtx);
+    const unlisten = listen<string>("menu://action", (e) => {
+      const id = e.payload;
+      const key = id.startsWith("menu.") ? id.slice(5) : id;
+      handlers[key]?.();
+    });
+    return () => {
+      void unlisten.then((un) => un());
+    };
+  }, [actionCtx]);
+
+  // Keep the native menu's shortcut combos in sync with the user's bindings:
+  // push on mount and whenever keybindings change (the selected reference only
+  // changes then). The push is deduped so re-renders don't rebuild the menu.
+  useEffect(() => {
+    pushMenuShortcuts();
+  }, [keybindings]);
 
   return (
     <div className="app">
