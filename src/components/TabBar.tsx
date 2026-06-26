@@ -32,7 +32,7 @@ export function TabBar({ onOpenGlobalSearch }: TabBarProps = {}) {
   const activeProjectId = useAppStore((s) => s.activeProjectId);
   const projects = useAppStore((s) => s.projects);
   const setActiveTab = useAppStore((s) => s.setActiveTab);
-  const closeTab = useAppStore((s) => s.closeTab);
+  const requestCloseTab = useAppStore((s) => s.requestCloseTab);
   const addTab = useAppStore((s) => s.addTab);
   const renameTab = useAppStore((s) => s.renameTab);
   const reorderTab = useAppStore((s) => s.reorderTab);
@@ -105,7 +105,7 @@ export function TabBar({ onOpenGlobalSearch }: TabBarProps = {}) {
       },
       {
         label: "Close",
-        onClick: () => void closeTab(tabId),
+        onClick: () => requestCloseTab(tabId),
       },
       {
         label: "Close others",
@@ -150,7 +150,7 @@ export function TabBar({ onOpenGlobalSearch }: TabBarProps = {}) {
               isEditing={editingId === tab.id}
               onActivate={() => setActiveTab(tab.id)}
               onEdit={() => setEditingId(tab.id)}
-              onClose={() => void closeTab(tab.id)}
+              onClose={() => requestCloseTab(tab.id)}
               onContextMenu={(x, y) => setCtx({ x, y, tabId: tab.id })}
               onCommitRename={(next) => {
                 setEditingId(null);

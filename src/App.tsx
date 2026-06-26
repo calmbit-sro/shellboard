@@ -13,6 +13,8 @@ import { GlobalSearch } from "./components/GlobalSearch";
 import { RunningApps } from "./components/RunningApps";
 import { ShortcutsDialog } from "./components/ShortcutsDialog";
 import { RecentSwitcher } from "./components/RecentSwitcher";
+import { ConfirmDialog } from "./components/ConfirmDialog";
+import { collectLeaves } from "./utils/mosaic";
 import {
   bindingMods,
   matchBinding,
@@ -87,6 +89,10 @@ function App() {
   const themeId = useAppStore((s) => s.settings.terminalTheme);
   const sidebarVisible = useAppStore((s) => s.sidebarVisible);
   const keybindings = useAppStore((s) => s.settings.keybindings);
+  const tabs = useAppStore((s) => s.tabs);
+  const pendingCloseTabId = useAppStore((s) => s.pendingCloseTabId);
+  const confirmPendingClose = useAppStore((s) => s.confirmPendingClose);
+  const cancelPendingClose = useAppStore((s) => s.cancelPendingClose);
   const initRan = useRef(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -414,6 +420,13 @@ function App() {
     pushMenuShortcuts();
   }, [keybindings]);
 
+  const pendingCloseTab = pendingCloseTabId
+    ? tabs.find((t) => t.id === pendingCloseTabId) ?? null
+    : null;
+  const pendingCloseCount = pendingCloseTab?.mosaic
+    ? collectLeaves(pendingCloseTab.mosaic).length
+    : 0;
+
   return (
     <div className="app">
       <TopBar
@@ -499,6 +512,16 @@ function App() {
       <ShortcutsDialog
         open={shortcutsOpen}
         onClose={() => setShortcutsOpen(false)}
+      />
+      <ConfirmDialog
+        open={!!pendingCloseTab}
+        title="Close tab?"
+        message={`This tab contains ${pendingCloseCount} terminals. Closing it will end all of them.`}
+        confirmLabel="Close tab"
+        cancelLabel="Cancel"
+        destructive
+        onConfirm={confirmPendingClose}
+        onCancel={cancelPendingClose}
       />
       <RecentSwitcher />
       <ErrorToast />

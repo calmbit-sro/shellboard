@@ -97,7 +97,7 @@ export function createActionHandlers(
     },
     "tab.close": () => {
       const store = useAppStore.getState();
-      if (store.activeTabId) void store.closeTab(store.activeTabId);
+      if (store.activeTabId) store.requestCloseTab(store.activeTabId);
     },
     "tab.closeOthers": () => {
       const store = useAppStore.getState();

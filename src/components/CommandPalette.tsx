@@ -284,7 +284,7 @@ export function CommandPalette({
                   </Command.Item>
                   <Command.Item
                     value="close tab"
-                    onSelect={run(() => store.closeTab(activeTabId))}
+                    onSelect={run(() => store.requestCloseTab(activeTabId))}
                     className="palette__item"
                   >
                     Close tab
