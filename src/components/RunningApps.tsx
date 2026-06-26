@@ -4,11 +4,20 @@ import { useAppStore } from "../store/appStore";
 import { collectLeaves } from "../utils/mosaic";
 import { getTerminal } from "../utils/terminalRegistry";
 import { cwdLabel } from "../utils/path";
+import { formatBytes } from "../utils/format";
 import { Terminal } from "./icons";
 import "./RunningApps.css";
 
 // Mirrors the Rust `RunningApp` (serde camelCase) returned by list_running_apps.
-type RunningApp = { pid: number; name: string; command: string };
+type RunningApp = {
+  pid: number;
+  name: string;
+  command: string;
+  memoryBytes: number;
+};
+
+// Mirrors the Rust `SelfMemory` (serde camelCase) from shellboard_memory.
+type SelfMemory = { appRssBytes: number; terminalCount: number };
 
 type Row = {
   sessionId: string; // == mosaic leaf id == PTY session id
@@ -64,6 +73,7 @@ function buildRows(apps: Record<string, RunningApp>): Row[] {
 
 export function RunningApps({ open, onClose }: RunningAppsProps) {
   const [apps, setApps] = useState<Record<string, RunningApp>>({});
+  const [self, setSelf] = useState<SelfMemory | null>(null);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const listRef = useRef<HTMLDivElement | null>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -71,6 +81,8 @@ export function RunningApps({ open, onClose }: RunningAppsProps) {
   // Re-subscribe so tab renames / cwd updates reflect live in the rows.
   const tabs = useAppStore((s) => s.tabs);
   const projects = useAppStore((s) => s.projects);
+  // Footer gauge context: the configured scrollback (RAM driver per terminal).
+  const scrollback = useAppStore((s) => s.settings.scrollback);
 
   const rows = useMemo(
     () => (open ? buildRows(apps) : []),
@@ -79,19 +91,30 @@ export function RunningApps({ open, onClose }: RunningAppsProps) {
   );
 
   // Live poll: fire immediately on open, then every POLL_MS until closed.
+  // Pulls both the per-terminal apps and Shellboard's own memory gauge on the
+  // same timer so they stay in sync and stop together when the modal closes.
   useEffect(() => {
     if (!open) {
       setApps({});
+      setSelf(null);
       return;
     }
     let cancelled = false;
     const poll = async () => {
       try {
-        const res =
-          await invoke<Record<string, RunningApp>>("list_running_apps");
-        if (!cancelled) setApps(res);
+        const [res, mem] = await Promise.all([
+          invoke<Record<string, RunningApp>>("list_running_apps"),
+          invoke<SelfMemory>("shellboard_memory"),
+        ]);
+        if (!cancelled) {
+          setApps(res);
+          setSelf(mem);
+        }
       } catch {
-        if (!cancelled) setApps({});
+        if (!cancelled) {
+          setApps({});
+          setSelf(null);
+        }
       }
     };
     void poll();
@@ -215,13 +238,25 @@ export function RunningApps({ open, onClose }: RunningAppsProps) {
                   )}
                 </span>
               </span>
+              <span className="rapps__mem">
+                {row.app.memoryBytes > 0 ? formatBytes(row.app.memoryBytes) : "—"}
+              </span>
             </button>
           ))}
         </div>
         <div className="rapps__footer">
           <span>↵ jump to terminal</span>
           <span className="rapps__footer-spacer" />
-          <span>updates live</span>
+          {self && (
+            <span
+              className="rapps__self"
+              title="Shellboard's own memory (excludes the apps running in terminals). Approximate on macOS — the WebView renders out-of-process."
+            >
+              Shellboard ~{formatBytes(self.appRssBytes)} ·{" "}
+              {self.terminalCount} {self.terminalCount === 1 ? "terminal" : "terminals"} ·{" "}
+              {scrollback.toLocaleString()}-line scrollback
+            </span>
+          )}
         </div>
       </div>
     </div>

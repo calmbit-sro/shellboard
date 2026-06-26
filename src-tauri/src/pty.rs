@@ -602,6 +602,9 @@ pub struct RunningApp {
     /// Best-effort full command line (argv joined), trimmed. Falls back to the
     /// name when the kernel doesn't expose argv.
     pub command: String,
+    /// Resident set size (RSS) in bytes of the chosen process plus all of its
+    /// descendants. Approximate — summing RSS double-counts shared pages.
+    pub memory_bytes: u64,
 }
 
 /// Whether `name` is one of the shells we spawn / nest. Used to skip the shell
@@ -666,6 +669,10 @@ fn pick_running_app(
         .join(" ")
         .trim()
         .to_string();
+    // Sum RSS of the chosen process plus all of its descendants, so a command
+    // that spawns workers (a dev server, npm -> node, etc.) reports its full
+    // footprint rather than just the parent.
+    let memory_bytes = subtree_memory(chosen, sys, children);
     Some(RunningApp {
         pid: chosen.as_u32(),
         command: if command.is_empty() {
@@ -674,7 +681,25 @@ fn pick_running_app(
             command
         },
         name,
+        memory_bytes,
     })
+}
+
+/// Sum the resident memory (bytes) of `root` and every descendant, using the
+/// pre-built pid -> children map. RSS double-counts shared pages, so this is an
+/// upper-bound approximation — fine for spotting heavy terminals.
+fn subtree_memory(root: Pid, sys: &System, children: &HashMap<Pid, Vec<Pid>>) -> u64 {
+    let mut total: u64 = 0;
+    let mut stack = vec![root];
+    while let Some(pid) = stack.pop() {
+        if let Some(p) = sys.process(pid) {
+            total += p.memory();
+        }
+        if let Some(kids) = children.get(&pid) {
+            stack.extend(kids.iter().copied());
+        }
+    }
+    total
 }
 
 /// For every live PTY session, report the non-shell app (if any) running inside
@@ -701,12 +726,14 @@ pub fn list_running_apps(
         return Ok(HashMap::new());
     }
 
-    // One snapshot: process name + parent pid (always populated) + cmdline.
+    // One snapshot: process name + parent pid (always populated) + cmdline + RSS.
     let mut sys = System::new();
     sys.refresh_processes_specifics(
         ProcessesToUpdate::All,
         true,
-        ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always),
+        ProcessRefreshKind::nothing()
+            .with_cmd(UpdateKind::Always)
+            .with_memory(),
     );
 
     // Build pid -> children once from the snapshot.
@@ -724,4 +751,65 @@ pub fn list_running_apps(
         }
     }
     Ok(out)
+}
+
+/// Shellboard's own memory footprint, distinct from the apps running inside
+/// terminals (which `list_running_apps` reports).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelfMemory {
+    /// Best-effort RSS in bytes of the Shellboard process tree (the main process
+    /// plus WebKit/helper descendants) with the terminal subtrees subtracted, so
+    /// it reflects the app itself and not the programs the user runs in terminals.
+    pub app_rss_bytes: u64,
+    /// Number of live PTY sessions (terminals) currently open.
+    pub terminal_count: usize,
+}
+
+/// Report Shellboard's own resident memory and the live terminal count, for the
+/// gauge in the Running-apps modal. Polled (~2s) only while that modal is open.
+///
+/// `app_rss_bytes` = RSS of the main process subtree minus every tracked
+/// terminal-shell subtree. On macOS the WebView (where the xterm scrollback
+/// buffers live) runs out-of-process; this captures it only if that helper is a
+/// descendant of the main process, so treat the number as approximate.
+#[tauri::command]
+pub fn shellboard_memory(state: State<'_, PtyManager>) -> Result<SelfMemory, String> {
+    let (shell_pids, terminal_count): (Vec<u32>, usize) = {
+        let sessions = state
+            .sessions
+            .lock()
+            .map_err(|e| format!("lock poisoned: {e}"))?;
+        (
+            sessions.values().filter_map(|s| s.shell_pid).collect(),
+            sessions.len(),
+        )
+    };
+
+    let main_pid = sysinfo::get_current_pid().map_err(|e| format!("current pid: {e}"))?;
+
+    let mut sys = System::new();
+    sys.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().with_memory(),
+    );
+
+    let mut children: HashMap<Pid, Vec<Pid>> = HashMap::new();
+    for (pid, proc_) in sys.processes() {
+        if let Some(parent) = proc_.parent() {
+            children.entry(parent).or_default().push(*pid);
+        }
+    }
+
+    let main_total = subtree_memory(main_pid, &sys, &children);
+    let terminals_total: u64 = shell_pids
+        .iter()
+        .map(|&p| subtree_memory(Pid::from_u32(p), &sys, &children))
+        .sum();
+
+    Ok(SelfMemory {
+        app_rss_bytes: main_total.saturating_sub(terminals_total),
+        terminal_count,
+    })
 }

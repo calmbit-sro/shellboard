@@ -143,6 +143,18 @@
   color: var(--subtle);
 }
 
+.rapps__mem {
+  margin-left: auto;
+  flex-shrink: 0;
+  align-self: center;
+  padding-left: 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+
 .rapps__footer {
   display: flex;
   align-items: center;
@@ -158,4 +170,12 @@
 
 .rapps__footer-spacer {
   flex: 1;
+}
+
+.rapps__self {
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: help;
 }

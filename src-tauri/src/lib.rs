@@ -3,8 +3,8 @@ mod pty;
 use std::collections::HashMap;
 
 use pty::{
-    git_branch, git_status, home_dir, kill_pty, list_running_apps, resize_pty, spawn_pty,
-    write_to_pty, PtyManager,
+    git_branch, git_status, home_dir, kill_pty, list_running_apps, resize_pty, shellboard_memory,
+    spawn_pty, write_to_pty, PtyManager,
 };
 use tauri::{
     menu::{Menu, MenuBuilder, MenuItem, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder},
@@ -347,6 +347,7 @@ pub fn run() {
             git_branch,
             git_status,
             list_running_apps,
+            shellboard_memory,
             set_menu_shortcuts
         ])
         .run(tauri::generate_context!())
