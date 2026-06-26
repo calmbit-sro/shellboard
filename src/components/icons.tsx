@@ -66,6 +66,9 @@ export const GitBranch = (p: IconProps) => (
 export const Terminal = (p: IconProps) => (
   <I {...p} d="M2 3.5h12v9H2zM4.5 6.5L6.5 8 4.5 9.5M7.5 10h3" />
 );
+export const Activity = (p: IconProps) => (
+  <I {...p} d="M14.5 8h-2.5l-2 6L6 2 4 8H1.5" />
+);
 export const Split = (p: IconProps) => (
   <I {...p} d="M2 3.5h12v9H2zM8 3.5v9" />
 );

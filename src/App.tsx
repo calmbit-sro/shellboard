@@ -10,6 +10,7 @@ import { ErrorToast } from "./components/ErrorToast";
 import { AboutDialog } from "./components/AboutDialog";
 import { StatusBar } from "./components/StatusBar";
 import { GlobalSearch } from "./components/GlobalSearch";
+import { RunningApps } from "./components/RunningApps";
 import { ShortcutsDialog } from "./components/ShortcutsDialog";
 import { RecentSwitcher } from "./components/RecentSwitcher";
 import {
@@ -97,6 +98,7 @@ function App() {
   );
   const [aboutOpen, setAboutOpen] = useState(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const [runningAppsOpen, setRunningAppsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   // Mirror modal-open state into a ref so the stable (empty-deps) keydown
@@ -109,6 +111,7 @@ function App() {
     addProjectOpen ||
     aboutOpen ||
     globalSearchOpen ||
+    runningAppsOpen ||
     shortcutsOpen;
 
   // Modal-open callbacks shared by the keyboard dispatcher and the native-menu
@@ -124,6 +127,7 @@ function App() {
       },
       openAbout: () => setAboutOpen(true),
       openGlobalSearch: () => setGlobalSearchOpen(true),
+      openRunningApps: () => setRunningAppsOpen(true),
       openShortcuts: () => setShortcutsOpen(true),
     }),
     [],
@@ -412,7 +416,10 @@ function App() {
 
   return (
     <div className="app">
-      <TopBar onOpenPalette={() => setPaletteOpen(true)} />
+      <TopBar
+        onOpenPalette={() => setPaletteOpen(true)}
+        onOpenRunningApps={() => setRunningAppsOpen(true)}
+      />
       <div className="app__body">
         {sidebarVisible && (
           <Sidebar
@@ -484,6 +491,10 @@ function App() {
       <GlobalSearch
         open={globalSearchOpen}
         onClose={() => setGlobalSearchOpen(false)}
+      />
+      <RunningApps
+        open={runningAppsOpen}
+        onClose={() => setRunningAppsOpen(false)}
       />
       <ShortcutsDialog
         open={shortcutsOpen}

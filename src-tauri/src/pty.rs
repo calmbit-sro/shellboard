@@ -4,12 +4,17 @@ use std::sync::{Arc, Mutex};
 
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
+use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 use tauri::{AppHandle, Emitter, State};
 
 pub struct PtySession {
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
     master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
     child: Arc<Mutex<Box<dyn Child + Send + Sync>>>,
+    // OS pid of the spawned shell, captured once at spawn. Immutable for the
+    // session's life, so the running-apps poll can read it under the sessions
+    // lock without contending with the reader/kill on the `child` mutex.
+    shell_pid: Option<u32>,
 }
 
 #[derive(Default)]
@@ -444,6 +449,9 @@ pub async fn spawn_pty(
         .slave
         .spawn_command(cmd)
         .map_err(|e| format!("spawn_command failed: {e}"))?;
+    // Snapshot the shell pid now, before `child` is moved into the session
+    // mutex — the running-apps detector walks descendants of this pid.
+    let shell_pid = child.process_id();
 
     // Drop the slave so the child is the only holder of the slave fd;
     // otherwise the reader won't see EOF when the child exits.
@@ -466,6 +474,7 @@ pub async fn spawn_pty(
         writer: Arc::new(Mutex::new(writer)),
         master: Arc::new(Mutex::new(pair.master)),
         child: Arc::new(Mutex::new(child)),
+        shell_pid,
     };
 
     state
@@ -580,4 +589,139 @@ pub async fn kill_pty(state: State<'_, PtyManager>, id: String) -> Result<(), St
         }
     }
     Ok(())
+}
+
+/// A non-shell process running inside a terminal, surfaced by `list_running_apps`.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunningApp {
+    /// pid of the chosen descendant process.
+    pub pid: u32,
+    /// Short executable name, e.g. "node", "vim", "python3".
+    pub name: String,
+    /// Best-effort full command line (argv joined), trimmed. Falls back to the
+    /// name when the kernel doesn't expose argv.
+    pub command: String,
+}
+
+/// Whether `name` is one of the shells we spawn / nest. Used to skip the shell
+/// itself (and intermediate wrapper shells) when deciding what's "running".
+fn is_shell_name(name: &str) -> bool {
+    // Login shells may report argv[0] as "-zsh".
+    let n = name.strip_prefix('-').unwrap_or(name);
+    matches!(
+        shell_basename(n),
+        "zsh" | "bash" | "sh" | "dash" | "fish" | "ksh" | "nu" | "nushell" | "tcsh" | "csh"
+            | "cmd" | "cmd.exe" | "powershell" | "powershell.exe" | "pwsh" | "pwsh.exe"
+    )
+}
+
+/// Walk the descendants of `shell_pid` and pick the process that best represents
+/// "what's running" in that terminal: the shallowest non-shell descendant (the
+/// command the user typed; deeper processes are its workers), breaking ties by
+/// lowest pid for determinism. Returns None when the shell is idle (only shells
+/// below it). Keeps descending through intermediate shells so that, e.g.,
+/// `npm` spawning `sh -c "node ..."` still surfaces `node`.
+fn pick_running_app(
+    shell_pid: Pid,
+    sys: &System,
+    children: &HashMap<Pid, Vec<Pid>>,
+) -> Option<RunningApp> {
+    let mut best: Option<(u32, Pid)> = None; // (depth, pid)
+    let mut queue: std::collections::VecDeque<(Pid, u32)> = std::collections::VecDeque::new();
+    if let Some(kids) = children.get(&shell_pid) {
+        for &k in kids {
+            queue.push_back((k, 1));
+        }
+    }
+    while let Some((pid, depth)) = queue.pop_front() {
+        if let Some(proc_) = sys.process(pid) {
+            let name = proc_.name().to_string_lossy();
+            if !is_shell_name(&name) {
+                let replace = match best {
+                    None => true,
+                    // Prefer shallower; at equal depth prefer the lower pid.
+                    Some((bd, bp)) => depth < bd || (depth == bd && pid < bp),
+                };
+                if replace {
+                    best = Some((depth, pid));
+                }
+            }
+            if let Some(kids) = children.get(&pid) {
+                for &k in kids {
+                    queue.push_back((k, depth + 1));
+                }
+            }
+        }
+    }
+
+    let (_, chosen) = best?;
+    let proc_ = sys.process(chosen)?;
+    let name = shell_basename(&proc_.name().to_string_lossy()).to_string();
+    let command = proc_
+        .cmd()
+        .iter()
+        .map(|s| s.to_string_lossy().into_owned())
+        .collect::<Vec<String>>()
+        .join(" ")
+        .trim()
+        .to_string();
+    Some(RunningApp {
+        pid: chosen.as_u32(),
+        command: if command.is_empty() {
+            name.clone()
+        } else {
+            command
+        },
+        name,
+    })
+}
+
+/// For every live PTY session, report the non-shell app (if any) running inside
+/// it, keyed by session id (== mosaic leaf id on the frontend). Idle shells are
+/// omitted. Takes a single process-table snapshot per call that serves all
+/// sessions, so the cost is one refresh regardless of terminal count. Polled
+/// from the frontend (~2s) only while the Running-apps modal is open.
+#[tauri::command]
+pub fn list_running_apps(
+    state: State<'_, PtyManager>,
+) -> Result<HashMap<String, RunningApp>, String> {
+    // Copy out (sessionId, shell_pid) and release the lock before the snapshot.
+    let shell_pids: Vec<(String, u32)> = {
+        let sessions = state
+            .sessions
+            .lock()
+            .map_err(|e| format!("lock poisoned: {e}"))?;
+        sessions
+            .iter()
+            .filter_map(|(id, s)| s.shell_pid.map(|p| (id.clone(), p)))
+            .collect()
+    };
+    if shell_pids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    // One snapshot: process name + parent pid (always populated) + cmdline.
+    let mut sys = System::new();
+    sys.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always),
+    );
+
+    // Build pid -> children once from the snapshot.
+    let mut children: HashMap<Pid, Vec<Pid>> = HashMap::new();
+    for (pid, proc_) in sys.processes() {
+        if let Some(parent) = proc_.parent() {
+            children.entry(parent).or_default().push(*pid);
+        }
+    }
+
+    let mut out = HashMap::new();
+    for (session_id, shell_pid) in shell_pids {
+        if let Some(app) = pick_running_app(Pid::from_u32(shell_pid), &sys, &children) {
+            out.insert(session_id, app);
+        }
+    }
+    Ok(out)
 }

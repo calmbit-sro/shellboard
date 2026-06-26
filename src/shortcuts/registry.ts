@@ -142,6 +142,12 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
     label: "Global search",
     defaultBinding: primary({ shift: true, key: "f" }),
   },
+  {
+    id: "apps.running",
+    category: "Terminal",
+    label: "Running apps",
+    defaultBinding: primary({ shift: true, key: "r" }),
+  },
   { id: "zoom.in", category: "Terminal", label: "Zoom in", defaultBinding: primary({ key: "=" }) },
   { id: "zoom.out", category: "Terminal", label: "Zoom out", defaultBinding: primary({ key: "-" }) },
   {

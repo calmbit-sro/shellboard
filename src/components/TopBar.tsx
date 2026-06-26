@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "../store/appStore";
 import { findTheme } from "../utils/themes";
-import { Logo, Moon, Sun } from "./icons";
+import { Activity, Logo, Moon, Sun } from "./icons";
 import "./TopBar.css";
 
 /** Relative luminance of an #rrggbb / #rgb / rgba(...) color. Returns 0..1. */
@@ -67,9 +67,10 @@ function writeTermPrefs(prefs: { dark: string; light: string }) {
 
 type TopBarProps = {
   onOpenPalette: () => void;
+  onOpenRunningApps: () => void;
 };
 
-export function TopBar({ onOpenPalette }: TopBarProps) {
+export function TopBar({ onOpenPalette, onOpenRunningApps }: TopBarProps) {
   const activeProjectId = useAppStore((s) => s.activeProjectId);
   const projects = useAppStore((s) => s.projects);
   const activeProject = projects.find((p) => p.id === activeProjectId);
@@ -178,6 +179,15 @@ export function TopBar({ onOpenPalette }: TopBarProps) {
         )}
       </div>
       <span className="topbar__spacer" data-tauri-drag-region />
+      <button
+        type="button"
+        className="topbar__btn"
+        onClick={onOpenRunningApps}
+        aria-label="Running apps"
+        title="Running apps"
+      >
+        <Activity size={11} />
+      </button>
       <button
         type="button"
         className="topbar__btn"

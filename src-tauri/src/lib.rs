@@ -3,8 +3,8 @@ mod pty;
 use std::collections::HashMap;
 
 use pty::{
-    git_branch, git_status, home_dir, kill_pty, resize_pty, spawn_pty, write_to_pty,
-    PtyManager,
+    git_branch, git_status, home_dir, kill_pty, list_running_apps, resize_pty, spawn_pty,
+    write_to_pty, PtyManager,
 };
 use tauri::{
     menu::{Menu, MenuBuilder, MenuItem, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder},
@@ -191,6 +191,8 @@ fn build_menu<R: Runtime>(
         .separator()
         .item(&shortcut_item(h, "menu.tab.next", "Next Tab", shortcuts)?)
         .item(&shortcut_item(h, "menu.tab.prev", "Previous Tab", shortcuts)?)
+        .separator()
+        .item(&shortcut_item(h, "menu.apps.running", "Running Apps…", shortcuts)?)
         .build()?;
 
     #[cfg(target_os = "macos")]
@@ -344,6 +346,7 @@ pub fn run() {
             home_dir,
             git_branch,
             git_status,
+            list_running_apps,
             set_menu_shortcuts
         ])
         .run(tauri::generate_context!())

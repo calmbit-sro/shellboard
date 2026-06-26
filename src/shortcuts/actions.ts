@@ -61,6 +61,7 @@ export type ActionContext = {
   openAddProject: (groupId?: string | null) => void;
   openAbout: () => void;
   openGlobalSearch: () => void;
+  openRunningApps: () => void;
   openShortcuts: () => void;
 };
 
@@ -147,6 +148,7 @@ export function createActionHandlers(
       if (tab?.focusedLeafId) store.setSearchingTerminal(tab.focusedLeafId);
     },
     "search.global": () => ctx.openGlobalSearch(),
+    "apps.running": () => ctx.openRunningApps(),
     "zoom.in": () => zoom(1),
     "zoom.out": () => zoom(-1),
     "zoom.reset": () => zoom(0),
