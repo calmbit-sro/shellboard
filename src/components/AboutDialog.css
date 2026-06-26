@@ -45,6 +45,18 @@
   line-height: 1.5;
 }
 
+.about__link {
+  font-size: 12px;
+  color: #6cb6ff;
+  text-decoration: none;
+  cursor: pointer;
+  margin-top: 2px;
+}
+
+.about__link:hover {
+  text-decoration: underline;
+}
+
 .about__close {
   margin-top: 16px;
   background: #3a3a3a;

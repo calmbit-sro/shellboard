@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { getName, getVersion, getTauriVersion } from "@tauri-apps/api/app";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { Modal } from "./Modal";
 import "./AboutDialog.css";
+
+const WEBSITE_URL = "https://calmbit.cz/en/shellboard";
 
 type AboutDialogProps = {
   open: boolean;
@@ -46,6 +49,16 @@ export function AboutDialog({ open, onClose }: AboutDialogProps) {
           Built with Tauri {info?.tauri ?? "…"} · React · xterm.js ·
           portable-pty
         </div>
+        <a
+          className="about__link"
+          href={WEBSITE_URL}
+          onClick={(e) => {
+            e.preventDefault();
+            void openUrl(WEBSITE_URL).catch(() => {});
+          }}
+        >
+          calmbit.cz/en/shellboard
+        </a>
         <button
           type="button"
           className="about__close"
