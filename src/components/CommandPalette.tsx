@@ -259,7 +259,7 @@ export function CommandPalette({
             <Command.Group heading="Tabs" className="palette__group">
               <Command.Item
                 value="new tab"
-                onSelect={run(() => store.addTab())}
+                onSelect={run(() => void store.addTab())}
                 className="palette__item"
               >
                 New tab

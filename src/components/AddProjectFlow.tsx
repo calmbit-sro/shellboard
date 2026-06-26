@@ -76,12 +76,16 @@ export function AddProjectFlow({
     if (!name) return;
     setSaving(true);
     try {
-      await addProject({
+      const created = await addProject({
         path: draft.path,
         name,
         color: draft.color,
         groupId: draft.groupId,
       });
+      // Spawning the project's first terminal failed (e.g. out of PTYs) — the
+      // store already surfaced an error toast. Keep the dialog open so the user
+      // can retry or cancel rather than silently dropping their input.
+      if (!created) return;
       setDraft(null);
       onClose();
     } finally {

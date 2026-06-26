@@ -202,6 +202,10 @@ type AppState = {
     index: number;
     mods: Pick<Binding, "meta" | "ctrl" | "alt">;
   } | null;
+  /** Transient, user-facing error message (e.g. a terminal couldn't be
+   * spawned because the OS ran out of PTYs). Rendered as a dismissable toast;
+   * null = nothing shown. Session-only. */
+  errorToast: string | null;
 
   hydrate: (data: {
     projects?: Project[];
@@ -221,6 +225,10 @@ type AppState = {
   setSearchingTerminal: (terminalId: string | null) => void;
   consumeRestoredBuffer: (terminalId: string) => string | null;
   setUpdateInfo: (info: AppState["updateInfo"]) => void;
+  /** Show a transient error toast. */
+  showError: (message: string) => void;
+  /** Dismiss the current error toast. */
+  dismissError: () => void;
 
   addGroup: (name: string) => Promise<ProjectGroup>;
   renameGroup: (id: string, name: string) => Promise<void>;
@@ -232,7 +240,7 @@ type AppState = {
 
   toggleBroadcast: (tabId: string) => void;
 
-  addTab: (opts?: AddTabOptions) => Promise<void>;
+  addTab: (opts?: AddTabOptions) => Promise<boolean>;
   closeTab: (tabId: string) => Promise<void>;
   closeOtherTabs: (tabId: string) => Promise<void>;
   closeTabsToRight: (tabId: string) => Promise<void>;
@@ -274,7 +282,7 @@ type AppState = {
     p: Omit<Project, "id" | "createdAt" | "groupId"> & {
       groupId?: string | null;
     },
-  ) => Promise<Project>;
+  ) => Promise<Project | null>;
   updateProject: (id: string, patch: Partial<Omit<Project, "id" | "createdAt">>) => Promise<void>;
   removeProject: (id: string) => Promise<void>;
   openProject: (projectId: string) => Promise<void>;
@@ -448,6 +456,22 @@ async function killTerminal(id: string): Promise<void> {
   }
 }
 
+/** Turn a `spawn_pty` rejection into a user-facing message. The backend
+ * surfaces "openpty failed: …" when the OS can't allocate a new PTY — almost
+ * always because too many terminals (across all apps) are open at once, which
+ * hits the system PTY ceiling. */
+function spawnErrorMessage(e: unknown): string {
+  const raw = e instanceof Error ? e.message : String(e);
+  if (
+    /openpty failed|out of pty|too many open files|os error 24|emfile|enfile|no space/i.test(
+      raw,
+    )
+  ) {
+    return "Couldn't open a new terminal — the system is out of PTYs. Close some terminals (or other apps) and try again.";
+  }
+  return `Couldn't start terminal: ${raw}`;
+}
+
 export const useAppStore = create<AppState>()((set, get) => ({
   tabs: [],
   activeTabId: null,
@@ -469,6 +493,10 @@ export const useAppStore = create<AppState>()((set, get) => ({
   updateInfo: null,
   recentLeafIds: [],
   switcher: null,
+  errorToast: null,
+
+  showError: (message) => set({ errorToast: message }),
+  dismissError: () => set({ errorToast: null }),
 
   hydrate: (data) =>
     set((state) => {
@@ -555,18 +583,26 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
   addTab: async (opts) => {
     const projectId = opts?.projectId ?? get().activeProjectId;
-    if (!projectId) return;
+    if (!projectId) return false;
     const project = get().projects.find((p) => p.id === projectId);
-    if (!project) return;
+    if (!project) return false;
 
     const cwd = opts?.cwd ?? project.path;
     const s = get().settings;
-    const terminalId = await spawnTerminal(
-      cwd,
-      s.autoCwdTracking,
-      s.shellPath,
-      s.shellArgs,
-    );
+    let terminalId: string;
+    try {
+      terminalId = await spawnTerminal(
+        cwd,
+        s.autoCwdTracking,
+        s.shellPath,
+        s.shellArgs,
+      );
+    } catch (e) {
+      // Surface the failure instead of swallowing it — a silent reject here
+      // used to leave the New-project dialog open with no feedback.
+      get().showError(spawnErrorMessage(e));
+      return false;
+    }
     const tabId = uuid();
     const tabsInProject = get().tabs.filter(
       (t) => t.projectId === projectId,
@@ -597,6 +633,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
         [projectId]: tabId,
       },
     }));
+    return true;
   },
 
   closeTab: async (tabId) => {
@@ -824,12 +861,18 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
     const cwd = terminals[leafId]?.cwd ?? (await resolveDefaultCwd());
     const s = get().settings;
-    const newLeafId = await spawnTerminal(
-      cwd,
-      s.autoCwdTracking,
-      s.shellPath,
-      s.shellArgs,
-    );
+    let newLeafId: string;
+    try {
+      newLeafId = await spawnTerminal(
+        cwd,
+        s.autoCwdTracking,
+        s.shellPath,
+        s.shellArgs,
+      );
+    } catch (e) {
+      get().showError(spawnErrorMessage(e));
+      return;
+    }
     const { direction, newOn } = sideToMosaic(side);
 
     const replacement =
@@ -1035,11 +1078,24 @@ export const useAppStore = create<AppState>()((set, get) => ({
       id: uuid(),
       createdAt: Date.now(),
     };
-    const projects = [...get().projects, project];
-    set({ projects });
-    await saveProjects(projects);
-    // Switch to the new project so the user can immediately start using it.
-    await get().setActiveProject(project.id);
+    const prevActive = get().activeProjectId;
+    // Register + switch to the project so its first tab renders in place, then
+    // spawn that tab. If the spawn fails (e.g. the OS is out of PTYs), roll the
+    // project back so we never persist an orphan with no tab — addTab has
+    // already surfaced the error toast. Persist only on success.
+    set((state) => ({
+      projects: [...state.projects, project],
+      activeProjectId: project.id,
+    }));
+    const ok = await get().addTab({ projectId: project.id });
+    if (!ok) {
+      set((state) => ({
+        projects: state.projects.filter((x) => x.id !== project.id),
+        activeProjectId: prevActive,
+      }));
+      return null;
+    }
+    await saveProjects(get().projects);
     return project;
   },
 
@@ -1281,67 +1337,84 @@ export const useAppStore = create<AppState>()((set, get) => ({
       const restoredBuffers: Record<string, string> = {};
       const consumedBufferIds = new Set<string>();
 
-      for (const ptab of pending) {
-        for (const id of collectLeafBufferIds(ptab.layout)) {
-          consumedBufferIds.add(id);
+      try {
+        for (const ptab of pending) {
+          for (const id of collectLeafBufferIds(ptab.layout)) {
+            consumedBufferIds.add(id);
+          }
+          const mosaic = await buildMosaicFromLayout(
+            ptab.layout,
+            buffers,
+            async (cwd, buffer) => {
+              const effectiveCwd = cwd || project.path;
+              const s = get().settings;
+              let terminalId: string;
+              try {
+                terminalId = await spawnTerminal(
+                  effectiveCwd,
+                  s.autoCwdTracking,
+                  s.shellPath,
+                  s.shellArgs,
+                );
+                newTerminals[terminalId] = {
+                  id: terminalId,
+                  cwd: effectiveCwd,
+                };
+              } catch {
+                terminalId = await spawnTerminal(
+                  project.path,
+                  s.autoCwdTracking,
+                  s.shellPath,
+                  s.shellArgs,
+                );
+                newTerminals[terminalId] = {
+                  id: terminalId,
+                  cwd: project.path,
+                };
+              }
+              if (buffer) restoredBuffers[terminalId] = buffer;
+              return terminalId;
+            },
+          );
+
+          newTabs.push({
+            id: ptab.id,
+            title: ptab.title,
+            customTitle: ptab.customTitle,
+            mosaic,
+            focusedLeafId: firstLeafOf(mosaic),
+            projectId,
+            hasUnread: false,
+            broadcastInput: false,
+          });
         }
-        const mosaic = await buildMosaicFromLayout(
-          ptab.layout,
-          buffers,
-          async (cwd, buffer) => {
-            const effectiveCwd = cwd || project.path;
-            const s = get().settings;
-            let terminalId: string;
-            try {
-              terminalId = await spawnTerminal(
-                effectiveCwd,
-                s.autoCwdTracking,
-                s.shellPath,
-                s.shellArgs,
-              );
-              newTerminals[terminalId] = {
-                id: terminalId,
-                cwd: effectiveCwd,
-              };
-            } catch {
-              terminalId = await spawnTerminal(
-                project.path,
-                s.autoCwdTracking,
-                s.shellPath,
-                s.shellArgs,
-              );
-              newTerminals[terminalId] = {
-                id: terminalId,
-                cwd: project.path,
-              };
-            }
-            if (buffer) restoredBuffers[terminalId] = buffer;
-            return terminalId;
-          },
-        );
 
-        newTabs.push({
-          id: ptab.id,
-          title: ptab.title,
-          customTitle: ptab.customTitle,
-          mosaic,
-          focusedLeafId: firstLeafOf(mosaic),
-          projectId,
-          hasUnread: false,
-          broadcastInput: false,
+        set((state) => {
+          const nextPendingBuffers = { ...state.pendingBuffers };
+          for (const id of consumedBufferIds) delete nextPendingBuffers[id];
+          return {
+            tabs: [...state.tabs, ...newTabs],
+            terminals: { ...state.terminals, ...newTerminals },
+            restoredBuffers: { ...state.restoredBuffers, ...restoredBuffers },
+            pendingBuffers: nextPendingBuffers,
+          };
         });
+      } catch (e) {
+        // Restoring a stashed layout couldn't spawn its terminals (the OS is
+        // out of PTYs). Kill whatever did spawn, put the pending entry back so
+        // the layout survives for a later retry, and surface the error instead
+        // of crashing the activation. Buffers weren't consumed yet (that set
+        // only runs on success), so they stay intact.
+        for (const id of Object.keys(newTerminals)) await killTerminal(id);
+        set((state) => ({
+          pendingProjectRestores: {
+            ...state.pendingProjectRestores,
+            [projectId]: pending,
+          },
+        }));
+        get().showError(spawnErrorMessage(e));
+        return;
       }
-
-      set((state) => {
-        const nextPendingBuffers = { ...state.pendingBuffers };
-        for (const id of consumedBufferIds) delete nextPendingBuffers[id];
-        return {
-          tabs: [...state.tabs, ...newTabs],
-          terminals: { ...state.terminals, ...newTerminals },
-          restoredBuffers: { ...state.restoredBuffers, ...restoredBuffers },
-          pendingBuffers: nextPendingBuffers,
-        };
-      });
     }
 
     set({ activeProjectId: projectId });

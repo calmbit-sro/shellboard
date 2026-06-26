@@ -171,6 +171,8 @@ export function createActionHandlers(
           color: randomProjectColor(),
           autoCwdName: true,
         });
+        // Null = spawning the first terminal failed; toast already shown.
+        if (!project) return;
         await store.openProject(project.id);
       })();
     },

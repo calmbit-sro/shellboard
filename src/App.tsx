@@ -6,6 +6,7 @@ import { TerminalHost } from "./components/TerminalHost";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { CommandPalette } from "./components/CommandPalette";
 import { AddProjectFlow } from "./components/AddProjectFlow";
+import { ErrorToast } from "./components/ErrorToast";
 import { AboutDialog } from "./components/AboutDialog";
 import { StatusBar } from "./components/StatusBar";
 import { GlobalSearch } from "./components/GlobalSearch";
@@ -489,6 +490,7 @@ function App() {
         onClose={() => setShortcutsOpen(false)}
       />
       <RecentSwitcher />
+      <ErrorToast />
     </div>
   );
 }
