@@ -114,6 +114,10 @@ export type Settings = {
   /** Show the project-count badge next to each group header in the
    * sidebar. Off = the chip is hidden, name takes the freed space. */
   showGroupCount: boolean;
+  /** Pop a confirmation dialog before closing a tab that contains a split
+   * (2+ terminals). Single-terminal tabs always close immediately. Off =
+   * never prompt. */
+  confirmCloseSplitTab: boolean;
   /** User keyboard-shortcut overrides, keyed by action id (see
    * src/shortcuts/registry.ts). Only overrides are stored; any id absent here
    * falls back to its default binding. Unknown ids are dropped on load. */
@@ -134,6 +138,7 @@ export const DEFAULT_SETTINGS: Settings = {
   persistScrollback: true,
   showPanelHeader: true,
   showGroupCount: true,
+  confirmCloseSplitTab: true,
   keybindings: {},
 };
 
@@ -165,6 +170,9 @@ type AppState = {
   renamingProjectId: string | null;
   /** When non-null, the GroupHeader should put this group into inline-rename mode. */
   renamingGroupId: string | null;
+  /** When non-null, App renders the close-tab confirmation dialog for this
+   * tab (set only for split tabs when confirmCloseSplitTab is on). */
+  pendingCloseTabId: string | null;
   /** When non-null, the matching Terminal should show its search overlay. */
   searchingTerminalId: string | null;
   /** Scrollback snapshots keyed by the new terminal id after session
@@ -242,6 +250,13 @@ type AppState = {
 
   addTab: (opts?: AddTabOptions) => Promise<boolean>;
   closeTab: (tabId: string) => Promise<void>;
+  /** User-facing tab close. Confirms first when the tab is a split and the
+   * confirmCloseSplitTab setting is on; otherwise closes immediately. */
+  requestCloseTab: (tabId: string) => void;
+  /** Resolve the pending close confirmation: actually close the tab. */
+  confirmPendingClose: () => void;
+  /** Dismiss the pending close confirmation without closing. */
+  cancelPendingClose: () => void;
   closeOtherTabs: (tabId: string) => Promise<void>;
   closeTabsToRight: (tabId: string) => Promise<void>;
   duplicateTab: (tabId: string) => Promise<void>;
@@ -398,6 +413,10 @@ function clampSettings(s: Partial<Settings>): Settings {
       typeof s.showGroupCount === "boolean"
         ? s.showGroupCount
         : DEFAULT_SETTINGS.showGroupCount,
+    confirmCloseSplitTab:
+      typeof s.confirmCloseSplitTab === "boolean"
+        ? s.confirmCloseSplitTab
+        : DEFAULT_SETTINGS.confirmCloseSplitTab,
     keybindings: clampKeybindings(s.keybindings),
   };
 }
@@ -486,6 +505,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   renamingTabId: null,
   renamingProjectId: null,
   renamingGroupId: null,
+  pendingCloseTabId: null,
   searchingTerminalId: null,
   restoredBuffers: {},
   pendingProjectRestores: {},
@@ -635,6 +655,24 @@ export const useAppStore = create<AppState>()((set, get) => ({
     }));
     return true;
   },
+
+  requestCloseTab: (tabId) => {
+    const { tabs, settings } = get();
+    const tab = tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    const isSplit = tab.mosaic ? collectLeaves(tab.mosaic).length > 1 : false;
+    if (settings.confirmCloseSplitTab && isSplit) {
+      set({ pendingCloseTabId: tabId });
+    } else {
+      void get().closeTab(tabId);
+    }
+  },
+  confirmPendingClose: () => {
+    const id = get().pendingCloseTabId;
+    set({ pendingCloseTabId: null });
+    if (id) void get().closeTab(id);
+  },
+  cancelPendingClose: () => set({ pendingCloseTabId: null }),
 
   closeTab: async (tabId) => {
     const { tabs, activeTabId, activeProjectId, terminals } = get();
