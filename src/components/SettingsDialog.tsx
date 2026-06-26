@@ -258,6 +258,7 @@ function SectionPane({ id }: { id: SectionId }) {
         >
           <UiFontSizeField />
           <ShowGroupCountField />
+          <ConfirmCloseSplitTabField />
           <CheckForUpdatesField />
         </SectionHeader>
       );
@@ -751,6 +752,23 @@ function ShowGroupCountField({ section }: { section?: string } = {}) {
   );
 }
 
+function ConfirmCloseSplitTabField({ section }: { section?: string } = {}) {
+  const { settings } = useSettings();
+  return (
+    <FieldRow
+      label="Confirm before closing a split tab"
+      align="top"
+      hint="Ask before closing a tab that contains multiple terminals (a split). Single-terminal tabs always close immediately."
+      section={section}
+    >
+      <Toggle2
+        on={settings.confirmCloseSplitTab}
+        onChange={(v) => set("confirmCloseSplitTab", v)}
+      />
+    </FieldRow>
+  );
+}
+
 function TrackCwdField({ section }: { section?: string } = {}) {
   const { settings } = useSettings();
   return (
@@ -1012,6 +1030,14 @@ const SEARCH_INDEX: ReadonlyArray<SearchEntry> = [
     label: "Show group project count",
     keywords: "sidebar group count badge projects number",
     render: (s) => <ShowGroupCountField section={s} />,
+  },
+  {
+    id: "confirm-close-split",
+    section: "general",
+    sectionLabel: "General",
+    label: "Confirm before closing a split tab",
+    keywords: "confirm close tab split panels warn prompt accidental cmd w",
+    render: (s) => <ConfirmCloseSplitTabField section={s} />,
   },
   {
     id: "term-font",
