@@ -516,7 +516,7 @@ function App() {
       <ConfirmDialog
         open={!!pendingCloseTab}
         title="Close tab?"
-        message={`This tab contains ${pendingCloseCount} terminals. Closing it will end all of them.`}
+        message={`This tab contains ${pendingCloseCount} terminal${pendingCloseCount === 1 ? "" : "s"}. Closing it will end all of them.`}
         confirmLabel="Close tab"
         cancelLabel="Cancel"
         destructive
