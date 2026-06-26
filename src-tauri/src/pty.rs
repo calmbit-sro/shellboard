@@ -591,7 +591,7 @@ pub async fn kill_pty(state: State<'_, PtyManager>, id: String) -> Result<(), St
     Ok(())
 }
 
-/// A non-shell process running inside a terminal, surfaced by `list_running_apps`.
+/// A non-shell process running inside a terminal, surfaced by `running_apps_snapshot`.
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunningApp {
@@ -702,29 +702,58 @@ fn subtree_memory(root: Pid, sys: &System, children: &HashMap<Pid, Vec<Pid>>) ->
     total
 }
 
-/// For every live PTY session, report the non-shell app (if any) running inside
-/// it, keyed by session id (== mosaic leaf id on the frontend). Idle shells are
-/// omitted. Takes a single process-table snapshot per call that serves all
-/// sessions, so the cost is one refresh regardless of terminal count. Polled
-/// from the frontend (~2s) only while the Running-apps modal is open.
+/// Shellboard's own memory footprint, distinct from the apps running inside
+/// terminals (which `apps` reports).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelfMemory {
+    /// Best-effort RSS in bytes of the Shellboard process tree (the main process
+    /// plus WebKit/helper descendants) with the terminal subtrees subtracted, so
+    /// it reflects the app itself and not the programs the user runs in terminals.
+    pub app_rss_bytes: u64,
+    /// Number of live PTY sessions (terminals) currently open.
+    pub terminal_count: usize,
+}
+
+/// Everything the Running-apps modal polls: the per-terminal app (with RSS) plus
+/// Shellboard's own footprint — both derived from one process-table snapshot.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunningAppsSnapshot {
+    /// Non-shell app per session id (== mosaic leaf id). Idle shells are omitted.
+    pub apps: HashMap<String, RunningApp>,
+    pub self_memory: SelfMemory,
+}
+
+/// Single snapshot serving the Running-apps modal: the app running in each
+/// terminal (with its subtree RSS) and Shellboard's own memory + terminal count.
+/// Takes ONE process-table refresh regardless of terminal count. Polled from the
+/// frontend (~2s) only while the modal is open.
+///
+/// `self_memory.app_rss_bytes` = RSS of the main process subtree minus every
+/// tracked terminal-shell subtree. On macOS the WebView (where the xterm
+/// scrollback buffers live) runs out-of-process; this captures it only if that
+/// helper is a descendant of the main process, so treat the number as approximate.
 #[tauri::command]
-pub fn list_running_apps(
+pub fn running_apps_snapshot(
     state: State<'_, PtyManager>,
-) -> Result<HashMap<String, RunningApp>, String> {
-    // Copy out (sessionId, shell_pid) and release the lock before the snapshot.
-    let shell_pids: Vec<(String, u32)> = {
+) -> Result<RunningAppsSnapshot, String> {
+    // Copy out (sessionId, shell_pid) and the count, then release the lock.
+    let (shell_pids, terminal_count): (Vec<(String, u32)>, usize) = {
         let sessions = state
             .sessions
             .lock()
             .map_err(|e| format!("lock poisoned: {e}"))?;
-        sessions
-            .iter()
-            .filter_map(|(id, s)| s.shell_pid.map(|p| (id.clone(), p)))
-            .collect()
+        (
+            sessions
+                .iter()
+                .filter_map(|(id, s)| s.shell_pid.map(|p| (id.clone(), p)))
+                .collect(),
+            sessions.len(),
+        )
     };
-    if shell_pids.is_empty() {
-        return Ok(HashMap::new());
-    }
+
+    let main_pid = sysinfo::get_current_pid().map_err(|e| format!("current pid: {e}"))?;
 
     // One snapshot: process name + parent pid (always populated) + cmdline + RSS.
     let mut sys = System::new();
@@ -744,72 +773,26 @@ pub fn list_running_apps(
         }
     }
 
-    let mut out = HashMap::new();
-    for (session_id, shell_pid) in shell_pids {
-        if let Some(app) = pick_running_app(Pid::from_u32(shell_pid), &sys, &children) {
-            out.insert(session_id, app);
-        }
-    }
-    Ok(out)
-}
-
-/// Shellboard's own memory footprint, distinct from the apps running inside
-/// terminals (which `list_running_apps` reports).
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SelfMemory {
-    /// Best-effort RSS in bytes of the Shellboard process tree (the main process
-    /// plus WebKit/helper descendants) with the terminal subtrees subtracted, so
-    /// it reflects the app itself and not the programs the user runs in terminals.
-    pub app_rss_bytes: u64,
-    /// Number of live PTY sessions (terminals) currently open.
-    pub terminal_count: usize,
-}
-
-/// Report Shellboard's own resident memory and the live terminal count, for the
-/// gauge in the Running-apps modal. Polled (~2s) only while that modal is open.
-///
-/// `app_rss_bytes` = RSS of the main process subtree minus every tracked
-/// terminal-shell subtree. On macOS the WebView (where the xterm scrollback
-/// buffers live) runs out-of-process; this captures it only if that helper is a
-/// descendant of the main process, so treat the number as approximate.
-#[tauri::command]
-pub fn shellboard_memory(state: State<'_, PtyManager>) -> Result<SelfMemory, String> {
-    let (shell_pids, terminal_count): (Vec<u32>, usize) = {
-        let sessions = state
-            .sessions
-            .lock()
-            .map_err(|e| format!("lock poisoned: {e}"))?;
-        (
-            sessions.values().filter_map(|s| s.shell_pid).collect(),
-            sessions.len(),
-        )
-    };
-
-    let main_pid = sysinfo::get_current_pid().map_err(|e| format!("current pid: {e}"))?;
-
-    let mut sys = System::new();
-    sys.refresh_processes_specifics(
-        ProcessesToUpdate::All,
-        true,
-        ProcessRefreshKind::nothing().with_memory(),
-    );
-
-    let mut children: HashMap<Pid, Vec<Pid>> = HashMap::new();
-    for (pid, proc_) in sys.processes() {
-        if let Some(parent) = proc_.parent() {
-            children.entry(parent).or_default().push(*pid);
+    // Per-terminal apps.
+    let mut apps = HashMap::new();
+    for (session_id, shell_pid) in &shell_pids {
+        if let Some(app) = pick_running_app(Pid::from_u32(*shell_pid), &sys, &children) {
+            apps.insert(session_id.clone(), app);
         }
     }
 
+    // Shellboard's own footprint: main subtree minus the terminal subtrees.
     let main_total = subtree_memory(main_pid, &sys, &children);
     let terminals_total: u64 = shell_pids
         .iter()
-        .map(|&p| subtree_memory(Pid::from_u32(p), &sys, &children))
+        .map(|(_, p)| subtree_memory(Pid::from_u32(*p), &sys, &children))
         .sum();
 
-    Ok(SelfMemory {
-        app_rss_bytes: main_total.saturating_sub(terminals_total),
-        terminal_count,
+    Ok(RunningAppsSnapshot {
+        apps,
+        self_memory: SelfMemory {
+            app_rss_bytes: main_total.saturating_sub(terminals_total),
+            terminal_count,
+        },
     })
 }

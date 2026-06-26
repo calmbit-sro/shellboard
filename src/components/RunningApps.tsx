@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useAppStore } from "../store/appStore";
+import { HIGH_TERMINAL_COUNT, useAppStore } from "../store/appStore";
 import { collectLeaves } from "../utils/mosaic";
 import { getTerminal } from "../utils/terminalRegistry";
 import { cwdLabel } from "../utils/path";
@@ -8,7 +8,7 @@ import { formatBytes } from "../utils/format";
 import { Terminal } from "./icons";
 import "./RunningApps.css";
 
-// Mirrors the Rust `RunningApp` (serde camelCase) returned by list_running_apps.
+// Mirrors the Rust `RunningApp` (serde camelCase).
 type RunningApp = {
   pid: number;
   name: string;
@@ -16,8 +16,14 @@ type RunningApp = {
   memoryBytes: number;
 };
 
-// Mirrors the Rust `SelfMemory` (serde camelCase) from shellboard_memory.
+// Mirrors the Rust `SelfMemory` (serde camelCase).
 type SelfMemory = { appRssBytes: number; terminalCount: number };
+
+// Mirrors the Rust `RunningAppsSnapshot` (serde camelCase).
+type Snapshot = { apps: Record<string, RunningApp>; selfMemory: SelfMemory };
+
+// Shellboard's own RSS past this looks heavy; turns the footer gauge orange.
+const HIGH_APP_RSS = 1_500_000_000; // 1.5 GB
 
 type Row = {
   sessionId: string; // == mosaic leaf id == PTY session id
@@ -62,13 +68,33 @@ function buildRows(apps: Record<string, RunningApp>): Row[] {
       }
     }
   }
+  // Heaviest first so the RAM hog is at the top; stable tiebreak keeps rows of
+  // equal memory from reshuffling under the cursor between polls.
   rows.sort(
     (a, b) =>
+      b.app.memoryBytes - a.app.memoryBytes ||
       a.projectName.localeCompare(b.projectName) ||
       a.tabTitle.localeCompare(b.tabTitle) ||
       a.sessionId.localeCompare(b.sessionId),
   );
   return rows;
+}
+
+/**
+ * Tabs whose every terminal is idle (a bare shell — none flagged as running an
+ * app by the backend). The currently active tab is spared so the cull never
+ * yanks the view out from under the user. These are the safe candidates for the
+ * "Close idle" button: closing them reclaims their live scrollback buffers.
+ */
+function computeIdleTabIds(apps: Record<string, RunningApp>): string[] {
+  const state = useAppStore.getState();
+  return state.tabs
+    .filter((t) => t.id !== state.activeTabId)
+    .filter((t) => {
+      const leaves = t.mosaic ? collectLeaves(t.mosaic) : [];
+      return leaves.length > 0 && leaves.every((leaf) => !apps[leaf]);
+    })
+    .map((t) => t.id);
 }
 
 export function RunningApps({ open, onClose }: RunningAppsProps) {
@@ -90,6 +116,26 @@ export function RunningApps({ open, onClose }: RunningAppsProps) {
     [open, apps, tabs, projects],
   );
 
+  const idleTabIds = useMemo(
+    () => (open ? computeIdleTabIds(apps) : []),
+    [open, apps, tabs],
+  );
+
+  // Heavy usage → orange gauge + a stronger nudge to close idle terminals.
+  const selfWarn =
+    !!self &&
+    (self.terminalCount >= HIGH_TERMINAL_COUNT ||
+      self.appRssBytes >= HIGH_APP_RSS);
+
+  // Hand the idle tabs to the global confirm dialog, then dismiss this modal so
+  // the two overlays don't stack.
+  function cullIdle() {
+    const ids = computeIdleTabIds(apps);
+    if (ids.length === 0) return;
+    onClose();
+    useAppStore.getState().requestCull(ids);
+  }
+
   // Live poll: fire immediately on open, then every POLL_MS until closed.
   // Pulls both the per-terminal apps and Shellboard's own memory gauge on the
   // same timer so they stay in sync and stop together when the modal closes.
@@ -102,13 +148,10 @@ export function RunningApps({ open, onClose }: RunningAppsProps) {
     let cancelled = false;
     const poll = async () => {
       try {
-        const [res, mem] = await Promise.all([
-          invoke<Record<string, RunningApp>>("list_running_apps"),
-          invoke<SelfMemory>("shellboard_memory"),
-        ]);
+        const snap = await invoke<Snapshot>("running_apps_snapshot");
         if (!cancelled) {
-          setApps(res);
-          setSelf(mem);
+          setApps(snap.apps);
+          setSelf(snap.selfMemory);
         }
       } catch {
         if (!cancelled) {
@@ -247,9 +290,19 @@ export function RunningApps({ open, onClose }: RunningAppsProps) {
         <div className="rapps__footer">
           <span>↵ jump to terminal</span>
           <span className="rapps__footer-spacer" />
+          {idleTabIds.length > 0 && (
+            <button
+              type="button"
+              className="rapps__cull"
+              onClick={cullIdle}
+              title="Close terminals running only an idle shell (the active tab is kept). Frees their scrollback buffers."
+            >
+              Close {idleTabIds.length} idle
+            </button>
+          )}
           {self && (
             <span
-              className="rapps__self"
+              className={`rapps__self ${selfWarn ? "rapps__self--warn" : ""}`}
               title="Shellboard's own memory (excludes the apps running in terminals). Approximate on macOS — the WebView renders out-of-process."
             >
               Shellboard ~{formatBytes(self.appRssBytes)} ·{" "}

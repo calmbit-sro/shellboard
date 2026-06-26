@@ -93,6 +93,9 @@ function App() {
   const pendingCloseTabId = useAppStore((s) => s.pendingCloseTabId);
   const confirmPendingClose = useAppStore((s) => s.confirmPendingClose);
   const cancelPendingClose = useAppStore((s) => s.cancelPendingClose);
+  const pendingCullTabIds = useAppStore((s) => s.pendingCullTabIds);
+  const confirmCull = useAppStore((s) => s.confirmCull);
+  const cancelCull = useAppStore((s) => s.cancelCull);
   const initRan = useRef(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -522,6 +525,16 @@ function App() {
         destructive
         onConfirm={confirmPendingClose}
         onCancel={cancelPendingClose}
+      />
+      <ConfirmDialog
+        open={!!pendingCullTabIds && pendingCullTabIds.length > 0}
+        title="Close idle terminals?"
+        message={`This closes ${pendingCullTabIds?.length ?? 0} terminal${(pendingCullTabIds?.length ?? 0) === 1 ? "" : "s"} running only an idle shell. Their scrollback will be lost. The active tab is kept.`}
+        confirmLabel="Close idle"
+        cancelLabel="Cancel"
+        destructive
+        onConfirm={() => void confirmCull()}
+        onCancel={cancelCull}
       />
       <RecentSwitcher />
       <ErrorToast />

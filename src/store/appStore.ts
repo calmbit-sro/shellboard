@@ -148,6 +148,11 @@ export const SETTINGS_LIMITS = {
   scrollback: { min: 500, max: 100000 },
 } as const;
 
+/** Terminals past this count use a lot of RAM (each keeps a live xterm
+ * scrollback buffer) and approach the system PTY ceiling. Drives the proactive
+ * spawn warning and the orange "high usage" nudge in the Running-apps modal. */
+export const HIGH_TERMINAL_COUNT = 40;
+
 export const SIDEBAR_DEFAULT_WIDTH = 240;
 export const SIDEBAR_MIN_WIDTH = 180;
 export const SIDEBAR_MAX_WIDTH = 360;
@@ -173,6 +178,9 @@ type AppState = {
   /** When non-null, App renders the close-tab confirmation dialog for this
    * tab (set only for split tabs when confirmCloseSplitTab is on). */
   pendingCloseTabId: string | null;
+  /** When non-null, App renders the "close idle terminals" confirmation for
+   * these tabs (computed from the Running-apps snapshot). Session-only. */
+  pendingCullTabIds: string[] | null;
   /** When non-null, the matching Terminal should show its search overlay. */
   searchingTerminalId: string | null;
   /** Scrollback snapshots keyed by the new terminal id after session
@@ -257,6 +265,13 @@ type AppState = {
   confirmPendingClose: () => void;
   /** Dismiss the pending close confirmation without closing. */
   cancelPendingClose: () => void;
+  /** Stage a "close idle terminals" confirmation for the given tabs. No-op when
+   * the list is empty (after filtering to tabs that still exist). */
+  requestCull: (tabIds: string[]) => void;
+  /** Resolve the cull confirmation: close every staged tab. */
+  confirmCull: () => Promise<void>;
+  /** Dismiss the cull confirmation without closing anything. */
+  cancelCull: () => void;
   closeOtherTabs: (tabId: string) => Promise<void>;
   closeTabsToRight: (tabId: string) => Promise<void>;
   duplicateTab: (tabId: string) => Promise<void>;
@@ -491,6 +506,28 @@ function spawnErrorMessage(e: unknown): string {
   return `Couldn't start terminal: ${raw}`;
 }
 
+/** Proactive "cap" warning: fire a one-time advisory toast when the live
+ * terminal count first crosses HIGH_TERMINAL_COUNT, re-arming once the user
+ * drops back below it. Complements the hard out-of-PTYs failure (fix #1) and the
+ * orange nudge in the Running-apps modal — this one reaches the user even with
+ * the modal closed. Purely advisory; never blocks a spawn. */
+let warnedHighTerminalCount = false;
+function maybeWarnTerminalCount(
+  count: number,
+  showError: (message: string) => void,
+): void {
+  if (count >= HIGH_TERMINAL_COUNT) {
+    if (!warnedHighTerminalCount) {
+      warnedHighTerminalCount = true;
+      showError(
+        `You have ${count} terminals open — each keeps a live scrollback buffer, so this adds up in RAM. Open Running apps to close idle ones.`,
+      );
+    }
+  } else {
+    warnedHighTerminalCount = false;
+  }
+}
+
 export const useAppStore = create<AppState>()((set, get) => ({
   tabs: [],
   activeTabId: null,
@@ -506,6 +543,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   renamingProjectId: null,
   renamingGroupId: null,
   pendingCloseTabId: null,
+  pendingCullTabIds: null,
   searchingTerminalId: null,
   restoredBuffers: {},
   pendingProjectRestores: {},
@@ -653,6 +691,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
         [projectId]: tabId,
       },
     }));
+    maybeWarnTerminalCount(Object.keys(get().terminals).length, get().showError);
     return true;
   },
 
@@ -673,6 +712,21 @@ export const useAppStore = create<AppState>()((set, get) => ({
     if (id) void get().closeTab(id);
   },
   cancelPendingClose: () => set({ pendingCloseTabId: null }),
+
+  requestCull: (tabIds) => {
+    const ids = tabIds.filter((id) => get().tabs.some((t) => t.id === id));
+    if (ids.length === 0) return;
+    set({ pendingCullTabIds: ids });
+  },
+  confirmCull: async () => {
+    const ids = get().pendingCullTabIds ?? [];
+    set({ pendingCullTabIds: null });
+    // Sequential so each closeTab sees consistent state (active-tab handoff).
+    for (const id of ids) {
+      await get().closeTab(id);
+    }
+  },
+  cancelCull: () => set({ pendingCullTabIds: null }),
 
   closeTab: async (tabId) => {
     const { tabs, activeTabId, activeProjectId, terminals } = get();
@@ -940,6 +994,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
         [newLeafId]: { id: newLeafId, cwd },
       },
     }));
+    maybeWarnTerminalCount(Object.keys(get().terminals).length, get().showError);
   },
 
   closeActivePanel: async () => {

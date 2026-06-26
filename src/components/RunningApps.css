@@ -179,3 +179,23 @@
   text-overflow: ellipsis;
   cursor: help;
 }
+
+.rapps__self--warn {
+  color: var(--orange);
+}
+
+.rapps__cull {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--orange);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.rapps__cull:hover {
+  background: var(--bg-3);
+}
