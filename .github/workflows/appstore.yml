@@ -137,15 +137,44 @@ jobs:
       - name: Create signed pkg
         run: |
           set -euo pipefail
+          echo "== all valid identities =="
+          security find-identity -v build.keychain || true
+          security find-identity -v -p basic build.keychain || true
+          security find-identity -v -p macappstore build.keychain || true
+          echo "== codesigning identities =="
+          security find-identity -v -p codesigning build.keychain || true
+
           APP_PATH=$(find src-tauri/target -name "Shellboard.app" -type d | head -n 1)
           if [ -z "$APP_PATH" ]; then
             echo "::error::Shellboard.app not found under src-tauri/target" >&2
             exit 1
           fi
           echo "APP_PATH=$APP_PATH"
+
+          # productbuild needs an *installer* identity, which never shows up
+          # under the codesigning policy. Rather than depend on the exact CN in
+          # APPLE_INSTALLER_SIGNING_IDENTITY (which failed to match), derive the
+          # installer identity's SHA-1: it's the valid identity that is NOT the
+          # application (codesigning) identity.
+          app_hash=$(security find-identity -v -p codesigning build.keychain \
+            | awk 'match($0,/[0-9A-F]{40}/){print substr($0,RSTART,RLENGTH); exit}')
+          installer_hash=$( { \
+              security find-identity -v build.keychain; \
+              security find-identity -v -p basic build.keychain; \
+              security find-identity -v -p macappstore build.keychain; \
+            } 2>/dev/null \
+            | awk 'match($0,/[0-9A-F]{40}/){print substr($0,RSTART,RLENGTH)}' \
+            | sort -u | grep -vx "$app_hash" | head -1)
+
+          if [ -z "$installer_hash" ]; then
+            echo "::error::No installer signing identity in keychain. Is APPLE_INSTALLER_CERTIFICATE a '3rd Party Mac Developer Installer' .p12 (with its private key)?" >&2
+            exit 1
+          fi
+          echo "Using installer identity: $installer_hash"
+
           productbuild \
             --component "$APP_PATH" /Applications \
-            --sign "$APPLE_INSTALLER_SIGNING_IDENTITY" \
+            --sign "$installer_hash" \
             Shellboard.pkg
 
       - name: Validate pkg
