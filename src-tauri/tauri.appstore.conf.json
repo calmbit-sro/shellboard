@@ -1,0 +1,11 @@
+{
+  "bundle": {
+    "category": "DeveloperTool",
+    "macOS": {
+      "entitlements": "./Entitlements-AppStore.plist",
+      "files": {
+        "embedded.provisionprofile": "./profiles/Shellboard_Mac_App_Store.provisionprofile"
+      }
+    }
+  }
+}
