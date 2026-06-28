@@ -5,6 +5,43 @@ All notable changes to Shellboard will be documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] — 2026-06-28
+
+Running-apps visibility and memory management, a couple of new
+confirmation prompts, and — finally — signed, notarized macOS builds.
+Existing settings and sessions are migrated automatically; nothing to do
+on upgrade.
+
+### Added
+
+- **Running apps in terminals.** A new overlay lists the processes
+  currently running in each terminal, including their live memory usage,
+  so you can see at a glance what's holding RAM.
+- **Memory management.** Smarter handling of long-lived sessions to keep
+  accumulated terminals from piling up resources, with an opt-in prompt
+  to close idle terminals.
+- **Native menu bar with shortcuts.** A real application menu whose items
+  reflect your current keyboard bindings live.
+- **Confirm before quitting.** Optional prompt before the app quits
+  (Cmd+Q or closing the window); toggle in Settings. On by default.
+- **Project page link** in the About dialog.
+
+### Changed
+
+- **Signed & notarized macOS builds.** Release DMGs are now signed with a
+  Developer ID certificate and notarized by Apple — no more Gatekeeper
+  right-click-to-open workaround.
+- **Bundle identifier** changed from `cz.petrhlozek.shellboard` to
+  `cz.calmbit.shellboard`. Your existing projects, sessions and scrollback
+  are migrated to the new location automatically on first launch; the old
+  data is kept as a backup and cleaned up after a few successful runs.
+
+### Fixed
+
+- Clearer error when the system runs out of available ttys instead of a
+  silent failed spawn.
+- Pluralize the terminal count in the close-tab confirmation.
+
 ## [2.1.0] — 2026-06-18
 
 A small follow-up release: a cross-project recent-terminal switcher,
