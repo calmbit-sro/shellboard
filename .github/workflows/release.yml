@@ -152,3 +152,33 @@ jobs:
         with:
           releaseId: ${{ needs.create-release.outputs.release_id }}
           args: ${{ matrix.args }}
+
+      # Tauri notarizes and staples the .app, but NOT the .dmg wrapped around it.
+      # A downloaded DMG therefore has no stapled ticket, so Gatekeeper shows an
+      # "Apple cannot check it" prompt on mount even though the app inside is
+      # notarized. Notarize + staple the DMG itself and re-upload it (--clobber
+      # overwrites the un-stapled copy tauri-action already pushed).
+      - name: Notarize & staple DMG (macOS)
+        if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          dmg=$(find src-tauri/target -path '*/bundle/dmg/*.dmg' | head -1)
+          if [ -z "$dmg" ]; then
+            echo "::error::No DMG found under src-tauri/target to notarize" >&2
+            exit 1
+          fi
+          echo "Notarizing $dmg"
+          xcrun notarytool submit "$dmg" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun stapler staple "$dmg"
+          xcrun stapler validate "$dmg"
+          echo "Re-uploading stapled DMG to ${GITHUB_REF_NAME}"
+          gh release upload "${GITHUB_REF_NAME}" "$dmg" --clobber --repo "${GITHUB_REPOSITORY}"
