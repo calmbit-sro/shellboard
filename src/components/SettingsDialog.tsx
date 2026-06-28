@@ -259,6 +259,7 @@ function SectionPane({ id }: { id: SectionId }) {
           <UiFontSizeField />
           <ShowGroupCountField />
           <ConfirmCloseSplitTabField />
+          <ConfirmBeforeQuittingField />
           <CheckForUpdatesField />
         </SectionHeader>
       );
@@ -769,6 +770,23 @@ function ConfirmCloseSplitTabField({ section }: { section?: string } = {}) {
   );
 }
 
+function ConfirmBeforeQuittingField({ section }: { section?: string } = {}) {
+  const { settings } = useSettings();
+  return (
+    <FieldRow
+      label="Confirm before quitting"
+      align="top"
+      hint="Ask for confirmation before the app quits (Cmd+Q or closing the window)."
+      section={section}
+    >
+      <Toggle2
+        on={settings.confirmBeforeQuitting}
+        onChange={(v) => set("confirmBeforeQuitting", v)}
+      />
+    </FieldRow>
+  );
+}
+
 function TrackCwdField({ section }: { section?: string } = {}) {
   const { settings } = useSettings();
   return (
@@ -1038,6 +1056,14 @@ const SEARCH_INDEX: ReadonlyArray<SearchEntry> = [
     label: "Confirm before closing a split tab",
     keywords: "confirm close tab split panels warn prompt accidental cmd w",
     render: (s) => <ConfirmCloseSplitTabField section={s} />,
+  },
+  {
+    id: "confirm-quit",
+    section: "general",
+    sectionLabel: "General",
+    label: "Confirm before quitting",
+    keywords: "confirm quit exit close app window closing cmd q warn prompt accidental",
+    render: (s) => <ConfirmBeforeQuittingField section={s} />,
   },
   {
     id: "term-font",

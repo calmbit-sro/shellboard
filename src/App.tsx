@@ -23,14 +23,15 @@ import {
 import { resolveBindings, SHORTCUT_ACTIONS } from "./shortcuts/registry";
 import {
   createActionHandlers,
+  performQuit,
   pushMenuShortcuts,
+  requestQuit,
   type ActionContext,
 } from "./shortcuts/actions";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { listen } from "@tauri-apps/api/event";
 import {
   enableSessionAutosave,
-  flushSessionSave,
   useAppStore,
   type Project,
   type ProjectGroup,
@@ -96,6 +97,8 @@ function App() {
   const pendingCullTabIds = useAppStore((s) => s.pendingCullTabIds);
   const confirmCull = useAppStore((s) => s.confirmCull);
   const cancelCull = useAppStore((s) => s.cancelCull);
+  const pendingQuit = useAppStore((s) => s.pendingQuit);
+  const cancelQuit = useAppStore((s) => s.cancelQuit);
   const initRan = useRef(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -149,19 +152,15 @@ function App() {
     );
   }, [uiFontSize]);
 
-  // Force-flush the session save when the user closes the window, so a
-  // debounced save doesn't get lost when the process terminates (e.g.
-  // on Cmd+Q). preventDefault first, await the flush, then destroy.
+  // Intercept window close (red button / Cmd+Q) so we control teardown: always
+  // preventDefault, then route through requestQuit() which honors the
+  // confirmBeforeQuitting setting (show the dialog) or quits immediately,
+  // flushing the debounced session save first so it can't get lost.
   useEffect(() => {
     const win = getCurrentWebviewWindow();
-    const unlistenPromise = win.onCloseRequested(async (event) => {
+    const unlistenPromise = win.onCloseRequested((event) => {
       event.preventDefault();
-      try {
-        await flushSessionSave();
-      } catch {
-        /* don't block close on save failure */
-      }
-      await win.destroy();
+      requestQuit();
     });
     return () => {
       void unlistenPromise.then((unlisten) => unlisten());
@@ -535,6 +534,16 @@ function App() {
         destructive
         onConfirm={() => void confirmCull()}
         onCancel={cancelCull}
+      />
+      <ConfirmDialog
+        open={pendingQuit}
+        title="Quit Shellboard?"
+        message="This will close all open terminals."
+        confirmLabel="Quit"
+        cancelLabel="Cancel"
+        destructive
+        onConfirm={() => void performQuit()}
+        onCancel={cancelQuit}
       />
       <RecentSwitcher />
       <ErrorToast />

@@ -54,6 +54,29 @@ export function pushMenuShortcuts(): void {
   });
 }
 
+/** Flush the debounced session save, then tear the window down. Both quit
+ *  entry points (menu/shortcut Quit and the window close button) funnel here so
+ *  in-flight session state can't be lost. */
+export async function performQuit(): Promise<void> {
+  try {
+    await flushSessionSave();
+  } catch {
+    /* don't block quit on save failure */
+  }
+  await getCurrentWebviewWindow().destroy();
+}
+
+/** Route a quit request through the confirmBeforeQuitting setting: open the
+ *  confirmation dialog when on, otherwise quit immediately. */
+export function requestQuit(): void {
+  const store = useAppStore.getState();
+  if (store.settings.confirmBeforeQuitting) {
+    store.setPendingQuit(true);
+  } else {
+    void performQuit();
+  }
+}
+
 /** The modal-open callbacks App owns (React state setters). */
 export type ActionContext = {
   openSettings: () => void;
@@ -189,17 +212,9 @@ export function createActionHandlers(
     // / per-mode logic out of the component (TopBar listens for this event).
     "theme.toggle": () =>
       window.dispatchEvent(new CustomEvent("shellboard:toggle-chrome-theme")),
-    // Flush the debounced session save before tearing the window down, mirroring
-    // the onCloseRequested path so a menu Quit can't lose in-flight state.
-    "app.quit": () => {
-      void (async () => {
-        try {
-          await flushSessionSave();
-        } catch {
-          /* don't block quit on save failure */
-        }
-        await getCurrentWebviewWindow().destroy();
-      })();
-    },
+    // Honor confirmBeforeQuitting and flush the debounced session save before
+    // tearing the window down, mirroring the onCloseRequested path so a menu
+    // Quit can't lose in-flight state.
+    "app.quit": () => requestQuit(),
   };
 }

@@ -118,6 +118,9 @@ export type Settings = {
    * (2+ terminals). Single-terminal tabs always close immediately. Off =
    * never prompt. */
   confirmCloseSplitTab: boolean;
+  /** Pop a confirmation dialog before the app quits (Cmd+Q or closing the
+   * window). Off = quit immediately. */
+  confirmBeforeQuitting: boolean;
   /** User keyboard-shortcut overrides, keyed by action id (see
    * src/shortcuts/registry.ts). Only overrides are stored; any id absent here
    * falls back to its default binding. Unknown ids are dropped on load. */
@@ -139,6 +142,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showPanelHeader: true,
   showGroupCount: true,
   confirmCloseSplitTab: true,
+  confirmBeforeQuitting: true,
   keybindings: {},
 };
 
@@ -181,6 +185,9 @@ type AppState = {
   /** When non-null, App renders the "close idle terminals" confirmation for
    * these tabs (computed from the Running-apps snapshot). Session-only. */
   pendingCullTabIds: string[] | null;
+  /** When true, App renders the "Quit Shellboard?" confirmation (set only when
+   * confirmBeforeQuitting is on). Session-only. */
+  pendingQuit: boolean;
   /** When non-null, the matching Terminal should show its search overlay. */
   searchingTerminalId: string | null;
   /** Scrollback snapshots keyed by the new terminal id after session
@@ -265,6 +272,9 @@ type AppState = {
   confirmPendingClose: () => void;
   /** Dismiss the pending close confirmation without closing. */
   cancelPendingClose: () => void;
+  /** Stage / dismiss the quit confirmation dialog. */
+  setPendingQuit: (v: boolean) => void;
+  cancelQuit: () => void;
   /** Stage a "close idle terminals" confirmation for the given tabs. No-op when
    * the list is empty (after filtering to tabs that still exist). */
   requestCull: (tabIds: string[]) => void;
@@ -432,6 +442,10 @@ function clampSettings(s: Partial<Settings>): Settings {
       typeof s.confirmCloseSplitTab === "boolean"
         ? s.confirmCloseSplitTab
         : DEFAULT_SETTINGS.confirmCloseSplitTab,
+    confirmBeforeQuitting:
+      typeof s.confirmBeforeQuitting === "boolean"
+        ? s.confirmBeforeQuitting
+        : DEFAULT_SETTINGS.confirmBeforeQuitting,
     keybindings: clampKeybindings(s.keybindings),
   };
 }
@@ -544,6 +558,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   renamingGroupId: null,
   pendingCloseTabId: null,
   pendingCullTabIds: null,
+  pendingQuit: false,
   searchingTerminalId: null,
   restoredBuffers: {},
   pendingProjectRestores: {},
@@ -712,6 +727,9 @@ export const useAppStore = create<AppState>()((set, get) => ({
     if (id) void get().closeTab(id);
   },
   cancelPendingClose: () => set({ pendingCloseTabId: null }),
+
+  setPendingQuit: (v) => set({ pendingQuit: v }),
+  cancelQuit: () => set({ pendingQuit: false }),
 
   requestCull: (tabIds) => {
     const ids = tabIds.filter((id) => get().tabs.some((t) => t.id === id));
