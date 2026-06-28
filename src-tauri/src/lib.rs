@@ -6,9 +6,11 @@ use pty::{
     git_branch, git_status, home_dir, kill_pty, resize_pty, running_apps_snapshot, spawn_pty,
     write_to_pty, PtyManager,
 };
+use std::path::Path;
+
 use tauri::{
     menu::{Menu, MenuBuilder, MenuItem, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder},
-    AppHandle, Emitter, Runtime,
+    AppHandle, Emitter, Manager, Runtime,
 };
 
 // Per-item shortcut display the frontend pushes (see set_menu_shortcuts). `accel`
@@ -325,6 +327,96 @@ fn set_menu_shortcuts(
     .map_err(|e| e.to_string())
 }
 
+// The bundle identifier changed from cz.petrhlozek.shellboard to
+// cz.calmbit.shellboard, which moves the per-app config/data dir. To avoid
+// orphaning existing users' projects, sessions and scrollback, copy the old
+// dir into the new one on first launch under the new identifier. We COPY (not
+// move) so the old dir stays as a backup if anything goes wrong, and only when
+// the new dir doesn't yet exist — so we never clobber data the user already
+// created under the new id, and the migration runs exactly once.
+//
+// After a successful copy we drop a countdown marker into the new dir and only
+// delete the old dir once the user has launched the migrated app a few times,
+// so the backup survives long enough to recover from a bad first run.
+const OLD_BUNDLE_ID: &str = "cz.petrhlozek.shellboard";
+const NEW_BUNDLE_ID: &str = "cz.calmbit.shellboard";
+const CLEANUP_MARKER: &str = ".legacy-cleanup";
+const CLEANUP_LAUNCHES: u32 = 3;
+
+fn migrate_legacy_config<R: Runtime>(app: &AppHandle<R>) {
+    // On macOS app_config_dir == app_data_dir; on Linux they differ, so handle
+    // both, de-duplicating so the same path isn't processed twice in one launch.
+    let candidates = [app.path().app_config_dir(), app.path().app_data_dir()];
+    let mut seen: Vec<std::path::PathBuf> = Vec::new();
+    for new_dir in candidates.into_iter().flatten() {
+        if seen.contains(&new_dir) {
+            continue;
+        }
+        seen.push(new_dir.clone());
+
+        let Some(parent) = new_dir.parent() else { continue };
+        let old_dir = parent.join(OLD_BUNDLE_ID);
+        // Only act when the new dir is actually the new bundle id and the old
+        // dir is a real, distinct directory.
+        if new_dir.file_name().and_then(|n| n.to_str()) != Some(NEW_BUNDLE_ID) {
+            continue;
+        }
+        if old_dir == new_dir {
+            continue;
+        }
+
+        if !new_dir.exists() {
+            // First launch under the new id: migrate if there's anything to copy.
+            if !old_dir.is_dir() {
+                continue;
+            }
+            if let Err(e) = copy_dir_recursive(&old_dir, &new_dir) {
+                eprintln!("shellboard: legacy config migration failed: {e}");
+                // Don't leave a half-copied dir that would block a retry.
+                let _ = std::fs::remove_dir_all(&new_dir);
+                continue;
+            }
+            // Arm the delayed cleanup of the old dir (the backup).
+            let _ = std::fs::write(new_dir.join(CLEANUP_MARKER), CLEANUP_LAUNCHES.to_string());
+        } else {
+            // Already migrated (or a native new-id install): advance any pending
+            // cleanup of the leftover backup.
+            tick_legacy_cleanup(&new_dir.join(CLEANUP_MARKER), &old_dir);
+        }
+    }
+}
+
+// Count down successful launches and, once the budget is spent, delete the old
+// backup dir and the marker. If the backup is already gone, just drop the marker.
+fn tick_legacy_cleanup(marker: &Path, old_dir: &Path) {
+    let Ok(contents) = std::fs::read_to_string(marker) else { return };
+    if !old_dir.is_dir() {
+        let _ = std::fs::remove_file(marker);
+        return;
+    }
+    let remaining = contents.trim().parse::<u32>().unwrap_or(0).saturating_sub(1);
+    if remaining == 0 {
+        let _ = std::fs::remove_dir_all(old_dir);
+        let _ = std::fs::remove_file(marker);
+    } else {
+        let _ = std::fs::write(marker, remaining.to_string());
+    }
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let target = dst.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_recursive(&entry.path(), &target)?;
+        } else {
+            std::fs::copy(entry.path(), &target)?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -333,6 +425,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .setup(|app| {
+            migrate_legacy_config(app.handle());
+            Ok(())
+        })
         .menu(|handle| build_menu(handle, &HashMap::new()))
         .on_menu_event(|app, event| {
             let _ = app.emit("menu://action", event.id().as_ref());
