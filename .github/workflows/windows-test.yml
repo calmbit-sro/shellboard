@@ -1,0 +1,59 @@
+name: Windows test build
+
+# Manual, on-demand Windows build for pre-release testing.
+#
+# Run it from the Actions tab (Actions → "Windows test build" → "Run workflow",
+# optionally on a specific branch). It produces a full RELEASE Windows installer
+# (NSIS .exe setup + .msi) and uploads it as a workflow artifact — no git tag,
+# no GitHub Release, nothing visible to users. Download the artifact, install on
+# a Windows machine/VM, and verify before wiring Windows into the real release.
+#
+# The build is UNSIGNED (no Windows code-signing cert), so SmartScreen will show
+# an "unknown publisher" warning on first run: More info → Run anyway.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    name: Build Windows installer
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+          key: windows-test
+
+      - name: Install npm deps
+        run: npm ci
+
+      - name: Build Tauri app (release)
+        run: npm run tauri build
+        env:
+          # No updater signing on this test build (matches build.yml).
+          TAURI_SIGNING_PRIVATE_KEY: ""
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+
+      # Release bundles land under target/release/bundle: nsis/*-setup.exe + msi/*.msi.
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: shellboard-windows-installer
+          path: |
+            src-tauri/target/release/bundle/nsis/**
+            src-tauri/target/release/bundle/msi/**
+          if-no-files-found: error
+          retention-days: 14
