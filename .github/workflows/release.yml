@@ -1,10 +1,11 @@
 name: Release
 
 # Triggered by tag push (e.g. `git tag v0.1.0 && git push origin v0.1.0`).
-# Builds installable bundles for macOS (Apple Silicon) and Linux,
+# Builds installable bundles for macOS (Apple Silicon), Linux and Windows,
 # then creates a DRAFT GitHub Release so you can review and publish manually.
 #
-# Windows is optional; enable it by adding `windows-latest` to the matrix.
+# The Windows build is unsigned (no code-signing cert), so SmartScreen shows an
+# "unknown publisher" prompt on first run — documented in the release notes below.
 #
 # The draft release is created up-front in a single job; the matrix builds
 # upload artifacts into it by `releaseId`. This avoids the race where two
@@ -55,6 +56,7 @@ jobs:
           - **macOS (Apple Silicon)**: `Shellboard_*_aarch64.dmg` — open, drag into *Applications*. This build is signed with a Developer ID certificate and notarized by Apple, so it opens normally with no Gatekeeper prompt.
           - **Linux (AppImage)**: `Shellboard_*.AppImage` — `chmod +x` and run.
           - **Linux (Debian/Ubuntu)**: `Shellboard_*_amd64.deb` — `sudo apt install ./Shellboard_*.deb`.
+          - **Windows**: `Shellboard_*_x64-setup.exe` (or `Shellboard_*_x64_en-US.msi`) — run the installer. This build is unsigned, so Windows SmartScreen shows an "unknown publisher" prompt: click *More info* → *Run anyway*.
           STATIC
             echo "RELEASE_NOTES_EOF"
           } >> "$GITHUB_OUTPUT"
@@ -93,6 +95,10 @@ jobs:
             rust_target: ""
             args: ""
             label: "Linux"
+          - platform: windows-latest
+            rust_target: ""
+            args: ""
+            label: "Windows"
 
     name: Build ${{ matrix.label }}
     runs-on: ${{ matrix.platform }}
