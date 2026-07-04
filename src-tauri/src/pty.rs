@@ -328,14 +328,28 @@ pub fn home_dir() -> String {
     default_home().unwrap_or_else(|| "/".to_string())
 }
 
-/// Return the current git branch name for a directory, or None if the
-/// directory isn't a git repo / git isn't installed. Runs `git rev-parse`
-/// which finishes in a few ms.
-#[tauri::command]
-pub fn git_branch(path: String) -> Option<String> {
-    let out = std::process::Command::new("git")
-        .arg("-C")
-        .arg(&path)
+/// Build a `git -C <path>` command with stdin closed so git can never block
+/// waiting for input, and — on Windows — the `CREATE_NO_WINDOW` flag so a
+/// console window doesn't flash each time git runs under our GUI-subsystem
+/// process. Always run the resulting command on a blocking thread, never the
+/// Tauri main thread (a slow/hung git would otherwise freeze the whole UI).
+fn git_command(path: &str) -> std::process::Command {
+    let mut cmd = std::process::Command::new("git");
+    cmd.arg("-C").arg(path).stdin(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // winbase.h CREATE_NO_WINDOW — suppress the console window Windows
+        // would otherwise allocate for git.exe (a console subsystem binary)
+        // when spawned from our windowed process.
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
+fn git_branch_blocking(path: &str) -> Option<String> {
+    let out = git_command(path)
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
         .output()
         .ok()?;
@@ -344,6 +358,18 @@ pub fn git_branch(path: String) -> Option<String> {
     }
     let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
     if name.is_empty() { None } else { Some(name) }
+}
+
+/// Return the current git branch name for a directory, or None if the
+/// directory isn't a git repo / git isn't installed. The `git` invocation runs
+/// on a blocking thread (via `spawn_blocking`) so it never stalls the main
+/// thread's event loop, even if git is slow to start or hangs.
+#[tauri::command]
+pub async fn git_branch(path: String) -> Option<String> {
+    tokio::task::spawn_blocking(move || git_branch_blocking(&path))
+        .await
+        .ok()
+        .flatten()
 }
 
 #[derive(Default, Serialize)]
@@ -401,13 +427,8 @@ fn parse_status_v2(text: &str) -> GitStatus {
     s
 }
 
-/// Full status for a directory: branch, dirty counts, ahead/behind vs upstream.
-/// Returns None if the path isn't a git repo.
-#[tauri::command]
-pub fn git_status(path: String) -> Option<GitStatus> {
-    let out = std::process::Command::new("git")
-        .arg("-C")
-        .arg(&path)
+fn git_status_blocking(path: &str) -> Option<GitStatus> {
+    let out = git_command(path)
         .args(["status", "--porcelain=v2", "--branch"])
         .output()
         .ok()?;
@@ -416,6 +437,19 @@ pub fn git_status(path: String) -> Option<GitStatus> {
     }
     let text = String::from_utf8_lossy(&out.stdout);
     Some(parse_status_v2(&text))
+}
+
+/// Full status for a directory: branch, dirty counts, ahead/behind vs upstream.
+/// Returns None if the path isn't a git repo. Runs the `git` invocation on a
+/// blocking thread so a slow/hung git never freezes the main thread — this is
+/// polled every 5 s from the frontend and fires immediately when a project's
+/// terminal cwd is first set.
+#[tauri::command]
+pub async fn git_status(path: String) -> Option<GitStatus> {
+    tokio::task::spawn_blocking(move || git_status_blocking(&path))
+        .await
+        .ok()
+        .flatten()
 }
 
 #[tauri::command]
