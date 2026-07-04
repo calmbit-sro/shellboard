@@ -5,6 +5,21 @@ All notable changes to Shellboard will be documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] — 2026-07-04
+
+Shellboard now runs on Windows. The macOS and Linux builds are unchanged
+and your settings, projects and sessions carry over untouched — nothing
+to do on upgrade.
+
+### Added
+
+- **Windows builds.** Shellboard is now built and released for Windows as
+  an `.exe` setup installer (and an `.msi`), with the same tabs, splits,
+  and session restore as the other platforms. It defaults to PowerShell,
+  falling back to `cmd.exe`. The build is currently unsigned, so Windows
+  SmartScreen shows an "unknown publisher" prompt on first run — click
+  *More info* → *Run anyway*.
+
 ## [2.2.0] — 2026-06-28
 
 Running-apps visibility and memory management, a couple of new
