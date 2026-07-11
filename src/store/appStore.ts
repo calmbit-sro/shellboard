@@ -23,7 +23,9 @@ import {
   buildMosaicFromLayout,
   collectLeafBufferIds,
   dropTerminalBuffer,
+  mosaicToLayout,
   serializeSession,
+  tabToPersisted,
   type PersistedSession,
   type PersistedTab,
 } from "../utils/sessionSerialize";
@@ -62,6 +64,16 @@ export type Tab = {
   /** When true, keystrokes typed into any panel in this tab are fanned out
    * to all panels. Useful for multi-server admin. */
   broadcastInput: boolean;
+};
+
+/** A tab captured at close time for Cmd/Ctrl+Shift+T reopen. Session-only —
+ * the stack is never persisted. Buffers hold the serialized scrollback of
+ * each leaf (up to MAX_BUFFER_CHARS each), so the cap keeps memory bounded. */
+export type ClosedTab = {
+  projectId: string;
+  tab: PersistedTab;
+  buffers: Record<string, string>;
+  closedAt: number;
 };
 
 export type Snippet = {
@@ -217,6 +229,9 @@ type AppState = {
    * restore. A Terminal consumes (and removes) its entry on mount so old
    * buffer content lands in the fresh xterm before PTY data flows in. */
   restoredBuffers: Record<string, string>;
+  /** Recently closed tabs for Cmd/Ctrl+Shift+T reopen. Newest last, capped
+   * at CLOSED_TABS_CAP, session-only. */
+  closedTabs: ClosedTab[];
   /** Lazy-load: persisted tabs of projects that haven't been activated
    * since startup. Spawned only when the user picks the project in the
    * sidebar. Drained per project; what's still in here at session save
@@ -309,6 +324,8 @@ type AppState = {
   closeOtherTabs: (tabId: string) => Promise<void>;
   closeTabsToRight: (tabId: string) => Promise<void>;
   duplicateTab: (tabId: string) => Promise<void>;
+  /** Reopen the most recently closed tab (layout + cwds + scrollback). */
+  reopenClosedTab: () => Promise<void>;
   setActiveTab: (tabId: string) => void;
   renameTab: (tabId: string, title: string) => void;
   nextTab: () => void;
@@ -563,6 +580,8 @@ function sanitizeGroups(v: unknown): ProjectGroup[] | null {
 
 const RECENT_CAP = 20;
 
+const CLOSED_TABS_CAP = 10;
+
 /** How long a restored scrollback snapshot stays in the store after its
  * first consumer. Long enough for StrictMode's second mount, short enough
  * that multi-MB strings don't accumulate for the session's lifetime. */
@@ -663,6 +682,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   pendingQuit: false,
   searchingTerminalId: null,
   restoredBuffers: {},
+  closedTabs: [],
   pendingProjectRestores: {},
   pendingBuffers: {},
   updateInfo: null,
@@ -863,6 +883,32 @@ export const useAppStore = create<AppState>()((set, get) => ({
     const tab = tabs.find((t) => t.id === tabId);
     if (!tab) return;
 
+    // Capture the tab for reopen-closed-tab before its PTYs die. Serialized
+    // through the same dirty-cache-backed path session save uses; flush
+    // xterm write queues first so the snapshot has the final output.
+    if (tab.mosaic) {
+      try {
+        await flushAllWrites();
+      } catch {
+        /* non-fatal — serialize what we have */
+      }
+      const buffers: Record<string, string> = {};
+      const persisted = tabToPersisted(tab, terminals, buffers);
+      if (persisted) {
+        set((state) => ({
+          closedTabs: [
+            ...state.closedTabs,
+            {
+              projectId: tab.projectId,
+              tab: persisted,
+              buffers,
+              closedAt: Date.now(),
+            },
+          ].slice(-CLOSED_TABS_CAP),
+        }));
+      }
+    }
+
     const leaves = tab.mosaic ? collectLeaves(tab.mosaic) : [];
     await Promise.all(leaves.map((id) => killTerminal(id)));
 
@@ -953,16 +999,125 @@ export const useAppStore = create<AppState>()((set, get) => ({
   duplicateTab: async (tabId) => {
     const { tabs, terminals } = get();
     const tab = tabs.find((t) => t.id === tabId);
-    if (!tab) return;
-    // Use the focused leaf's cwd so the new tab starts where the user was
-    // looking; falls back to the first leaf if focus isn't tracked.
-    const sourceLeaf =
-      tab.focusedLeafId ?? (tab.mosaic ? firstLeafOf(tab.mosaic) : null);
-    const cwd = sourceLeaf ? terminals[sourceLeaf]?.cwd : undefined;
-    await get().addTab({
+    if (!tab || !tab.mosaic) return;
+    const project = get().projects.find((p) => p.id === tab.projectId);
+    if (!project) return;
+
+    // Replicate the full split layout with fresh shells in the same cwds.
+    // Scrollback is intentionally not copied — the buffer sink is discarded
+    // and buildMosaicFromLayout finds no buffer for any leaf.
+    const layout = mosaicToLayout(tab.mosaic, terminals, {});
+    const newTerminals: Record<string, TerminalSession> = {};
+    let mosaic: MosaicNode<string>;
+    try {
+      mosaic = await buildMosaicFromLayout(layout, {}, async (cwd) => {
+        const s = get().settings;
+        const effectiveCwd = cwd || project.path;
+        const terminalId = await spawnTerminal(
+          effectiveCwd,
+          s.autoCwdTracking,
+          s.shellPath,
+          s.shellArgs,
+        );
+        newTerminals[terminalId] = { id: terminalId, cwd: effectiveCwd };
+        return terminalId;
+      });
+    } catch (e) {
+      for (const id of Object.keys(newTerminals)) await killTerminal(id);
+      get().showError(spawnErrorMessage(e));
+      return;
+    }
+
+    const tabsInProject = get().tabs.filter(
+      (t) => t.projectId === tab.projectId,
+    ).length;
+    const newTab: Tab = {
+      id: uuid(),
+      title: tab.customTitle
+        ? tab.title
+        : `${project.name} ${tabsInProject + 1}`,
+      customTitle: tab.customTitle,
+      mosaic,
+      focusedLeafId: firstLeafOf(mosaic),
       projectId: tab.projectId,
-      cwd,
-    });
+      hasUnread: false,
+      hasFailed: false,
+      broadcastInput: false,
+    };
+    set((state) => ({
+      tabs: [...state.tabs, newTab],
+      terminals: { ...state.terminals, ...newTerminals },
+    }));
+    get().setActiveTab(newTab.id);
+  },
+
+  reopenClosedTab: async () => {
+    // Newest entry whose project still exists; stale entries (project was
+    // deleted meanwhile, e.g. an ephemeral quick-add project) drop out.
+    const projects = get().projects;
+    const rest = [...get().closedTabs];
+    let entry: ClosedTab | undefined;
+    while (rest.length > 0) {
+      const candidate = rest.pop()!;
+      if (projects.some((p) => p.id === candidate.projectId)) {
+        entry = candidate;
+        break;
+      }
+    }
+    set({ closedTabs: rest });
+    if (!entry) return;
+    const picked = entry;
+    const project = projects.find((p) => p.id === picked.projectId)!;
+
+    const newTerminals: Record<string, TerminalSession> = {};
+    const restoredBuffers: Record<string, string> = {};
+    let mosaic: MosaicNode<string>;
+    try {
+      mosaic = await buildMosaicFromLayout(
+        picked.tab.layout,
+        picked.buffers,
+        async (cwd, buffer) => {
+          const s = get().settings;
+          const effectiveCwd = cwd || project.path;
+          const terminalId = await spawnTerminal(
+            effectiveCwd,
+            s.autoCwdTracking,
+            s.shellPath,
+            s.shellArgs,
+          );
+          newTerminals[terminalId] = { id: terminalId, cwd: effectiveCwd };
+          if (buffer) restoredBuffers[terminalId] = buffer;
+          return terminalId;
+        },
+      );
+    } catch (e) {
+      // Out of PTYs — kill what did spawn, put the entry back for a retry.
+      for (const id of Object.keys(newTerminals)) await killTerminal(id);
+      set((state) => ({ closedTabs: [...state.closedTabs, picked] }));
+      get().showError(spawnErrorMessage(e));
+      return;
+    }
+
+    const newTab: Tab = {
+      id: uuid(),
+      title: picked.tab.title,
+      customTitle: picked.tab.customTitle,
+      mosaic,
+      focusedLeafId: firstLeafOf(mosaic),
+      projectId: picked.projectId,
+      hasUnread: false,
+      hasFailed: false,
+      broadcastInput: false,
+    };
+    set((state) => ({
+      tabs: [...state.tabs, newTab],
+      terminals: { ...state.terminals, ...newTerminals },
+      restoredBuffers: { ...state.restoredBuffers, ...restoredBuffers },
+    }));
+    if (get().activeProjectId !== picked.projectId) {
+      await get().setActiveProject(picked.projectId);
+    }
+    get().setActiveTab(newTab.id);
   },
 
   setActiveTab: (tabId) => {
@@ -1388,6 +1543,9 @@ export const useAppStore = create<AppState>()((set, get) => ({
       lastActiveTabByProject: nextLastActive,
       pendingProjectRestores: nextPendingProjects,
       pendingBuffers: nextPendingBuffers,
+      // Closed tabs of a deleted project can't be reopened — drop them
+      // (and their buffers) instead of skipping them lazily forever.
+      closedTabs: get().closedTabs.filter((c) => c.projectId !== id),
     });
 
     await saveProjects(remainingProjects);
