@@ -20,6 +20,7 @@ import {
   unregisterTerminal,
 } from "../utils/terminalRegistry";
 import { markTerminalBufferDirty } from "../utils/sessionSerialize";
+import { addPromptMark, clearPromptMarks } from "../utils/promptMarks";
 
 const IS_MAC =
   typeof navigator !== "undefined" &&
@@ -223,6 +224,27 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
       }),
     );
 
+    // OSC 133 shell-integration marks: A = prompt start (jump anchor),
+    // C = command started, D;<code> = command finished. Emitted by the
+    // hooks pty.rs injects when shell integration is on.
+    disposables.push(
+      xterm.parser.registerOscHandler(133, (data) => {
+        const kind = data[0];
+        if (kind === "A") {
+          const marker = xterm.registerMarker(0);
+          if (marker) addPromptMark(terminalId, marker);
+        } else if (kind === "C") {
+          useAppStore.getState().handleCommandStart(terminalId);
+        } else if (kind === "D") {
+          const code = parseInt(data.slice(2), 10);
+          useAppStore
+            .getState()
+            .handleCommandEnd(terminalId, Number.isFinite(code) ? code : 0);
+        }
+        return true;
+      }),
+    );
+
     (async () => {
       const offData = await listen<PtyDataPayload>(
         `pty://${terminalId}/data`,
@@ -322,6 +344,7 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
       for (const d of disposables) d.dispose();
       for (const off of unlisteners) off();
       unregisterTerminal(terminalId);
+      clearPromptMarks(terminalId);
       xterm.dispose();
       xtermRef.current = null;
       fitRef.current = null;

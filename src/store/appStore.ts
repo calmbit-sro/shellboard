@@ -35,6 +35,11 @@ import { isKnownActionId } from "../shortcuts/registry";
 export type TerminalSession = {
   id: string;
   cwd: string;
+  /** Exit code of the most recently finished command (OSC 133;D). */
+  lastExitCode?: number;
+  /** Set while a command is running (OSC 133;C → D). Drives the
+   * long-command notification threshold. */
+  commandStartedAt?: number;
 };
 
 export type Tab = {
@@ -345,6 +350,10 @@ type AppState = {
   commitSidebarWidth: (width: number) => Promise<void>;
 
   updateTerminalCwd: (terminalId: string, cwd: string) => void;
+  /** OSC 133;C — a command started running in this terminal. */
+  handleCommandStart: (terminalId: string) => void;
+  /** OSC 133;D — a command finished with this exit code. */
+  handleCommandEnd: (terminalId: string, exitCode: number) => void;
   restoreSession: (
     session: PersistedSession,
     buffers: Record<string, string>,
@@ -1660,6 +1669,33 @@ export const useAppStore = create<AppState>()((set, get) => ({
         },
       };
     });
+  },
+
+  handleCommandStart: (terminalId) =>
+    set((state) => {
+      const current = state.terminals[terminalId];
+      if (!current) return state;
+      return {
+        terminals: {
+          ...state.terminals,
+          [terminalId]: { ...current, commandStartedAt: Date.now() },
+        },
+      };
+    }),
+
+  handleCommandEnd: (terminalId, exitCode) => {
+    const current = get().terminals[terminalId];
+    if (!current) return;
+    set((state) => ({
+      terminals: {
+        ...state.terminals,
+        [terminalId]: {
+          ...state.terminals[terminalId],
+          lastExitCode: exitCode,
+          commandStartedAt: undefined,
+        },
+      },
+    }));
   },
 
   restoreSession: async (session, buffers) => {
