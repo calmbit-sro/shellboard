@@ -408,14 +408,20 @@ function App() {
   // Native application menu (built in Rust) emits `menu://action` with an item
   // id like "menu.tab.new". Strip the prefix and run the matching shared
   // handler — the same behavior the keyboard shortcuts use. (macOS items show a
-  // real accelerator, but the webview consumes the key first so the JS shortcut
-  // dispatcher stays the source of truth; either path dispatches the same action
+  // real accelerator; while no dialog is up the webview consumes the key first
+  // and the JS dispatcher handles it, so either path dispatches the same action
   // exactly once.)
   useEffect(() => {
     const handlers = createActionHandlers(actionCtx);
     const unlisten = listen<string>("menu://action", (e) => {
       const id = e.payload;
       const key = id.startsWith("menu.") ? id.slice(5) : id;
+      // The keyboard dispatcher stands down while a dialog is open — but
+      // then the webview no longer consumes the key, so the native menu
+      // accelerator fires instead (Cmd+W in Settings closed a tab). Gate
+      // menu actions the same way; only quit stays available, since it
+      // routes through its own confirmation + session flush.
+      if (modalOpenRef.current && key !== "app.quit") return;
       handlers[key]?.();
     });
     return () => {
