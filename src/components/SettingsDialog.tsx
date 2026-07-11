@@ -792,9 +792,9 @@ function TrackCwdField({ section }: { section?: string } = {}) {
   const { settings } = useSettings();
   return (
     <FieldRow
-      label="Track current directory"
+      label="Shell integration"
       align="top"
-      hint="Injects an OSC 7 shell hook so session restore remembers the directory you cd’d into. Supports zsh, bash, fish, nushell. Affects newly-spawned terminals only."
+      hint="Injects shell hooks (zsh, bash, fish, nushell): OSC 7 keeps the current directory in sync for session restore, OSC 133 marks prompts and command exits — powering prompt jumping (⌘↑/⌘↓), the failed-command tab dot, and long-command notifications. Affects newly-spawned terminals only."
       section={section}
     >
       <Toggle2
@@ -1127,8 +1127,9 @@ const SEARCH_INDEX: ReadonlyArray<SearchEntry> = [
     id: "track-cwd",
     section: "terminal",
     sectionLabel: "Terminal",
-    label: "Track current directory",
-    keywords: "osc 7 cwd directory tracking shell hook zsh bash fish nushell",
+    label: "Shell integration",
+    keywords:
+      "osc 7 133 cwd directory tracking shell integration hook zsh bash fish nushell prompt marks",
     render: (s) => <TrackCwdField section={s} />,
   },
   {
