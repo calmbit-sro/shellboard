@@ -94,12 +94,20 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
     const saved = useAppStore.getState().consumeRestoredBuffer(terminalId);
     if (saved) {
       try {
-        // The callback runs after xterm's async parse — by then the mount
-        // fit() has resized the buffer, and that reflow can leave the
+        // Trailing DECSC (\e7): the shell's own save-cursor often lands in
+        // the PTY stream before our data listener attaches and is lost, so
+        // the first prompt paint's unpaired DECRC (\e8) would restore the
+        // fresh terminal's default (0,0) — and the \e[J that follows it
+        // would wipe the whole restored screen (observed with p10k). Saving
+        // the end-of-restored-content position here makes that DECRC land
+        // exactly where the shell will draw its prompt.
+        //
+        // The scroll callback runs after xterm's async parse — by then the
+        // mount fit() has resized the buffer, and that reflow can leave the
         // viewport anchored above the end. Pin it back to the bottom so the
         // prompt lands where the user left it (and subsequent PTY writes
         // keep auto-scrolling).
-        xterm.write(saved, () => xterm.scrollToBottom());
+        xterm.write(saved + "\x1b7", () => safeScrollToBottom());
       } catch {
         /* ignore malformed saved data */
       }
@@ -113,6 +121,19 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
     // restored content stays visible and the shell's prompt lands on the
     // line below it (the cursor is already parked at the end of the
     // restored content by `xterm.write(saved)`).
+    // scrollToBottom touches renderer dimensions and throws while the
+    // renderer of a freshly-mounted (or hidden) terminal isn't ready yet.
+    // It must never throw inside an xterm.write callback — an exception
+    // there breaks xterm's write-queue processing and corrupts everything
+    // that was still queued (this is exactly what broke reopened tabs).
+    const safeScrollToBottom = () => {
+      try {
+        xterm.scrollToBottom();
+      } catch {
+        /* renderer not ready — the grace pin retries shortly */
+      }
+    };
+
     let filterStartupClears = !!saved;
     let graceTimer: ReturnType<typeof setTimeout> | null = null;
     let gracePin: ReturnType<typeof setInterval> | null = null;
@@ -124,7 +145,7 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
       // window closes, keep pulling it back to the bottom.
       gracePin = setInterval(() => {
         const buf = xterm.buffer.active;
-        if (buf.viewportY < buf.baseY) xterm.scrollToBottom();
+        if (buf.viewportY < buf.baseY) safeScrollToBottom();
       }, 250);
       graceTimer = setTimeout(() => {
         filterStartupClears = false;
@@ -219,7 +240,7 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
       } catch {
         /* container may be hidden or not laid out yet */
       }
-      if (wasAtBottom) xterm.scrollToBottom();
+      if (wasAtBottom) safeScrollToBottom();
     };
 
     const fitAndSync = () => {
@@ -285,7 +306,7 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
             // Startup sequences the filter doesn't cover can still yank the
             // view off the restored content — keep the tail pinned for the
             // duration of the grace window.
-            xterm.write(data, () => xterm.scrollToBottom());
+            xterm.write(data, () => safeScrollToBottom());
           } else {
             xterm.write(data);
           }
