@@ -48,6 +48,9 @@ export function TabBar({ onOpenGlobalSearch }: TabBarProps = {}) {
   const [ctx, setCtx] = useState<{ x: number; y: number; tabId: string } | null>(
     null,
   );
+  // DOM nodes per tab so arrow-key navigation can move real focus along
+  // with the active tab (roving tabindex).
+  const tabRefs = useRef(new Map<string, HTMLDivElement>());
 
   useEffect(() => {
     if (renamingTabId) {
@@ -86,6 +89,17 @@ export function TabBar({ onOpenGlobalSearch }: TabBarProps = {}) {
     const cwd = leafId ? terminals[leafId]?.cwd : undefined;
     if (!cwd) return tab.title;
     return cwdLabel(cwd);
+  }
+
+  // Selection follows focus: Left/Right on a focused tab activates the
+  // neighbor and moves DOM focus with it.
+  function moveActive(fromTabId: string, dir: -1 | 1) {
+    const idx = groupTabs.findIndex((t) => t.id === fromTabId);
+    if (idx === -1) return;
+    const next = groupTabs[idx + dir];
+    if (!next) return;
+    setActiveTab(next.id);
+    tabRefs.current.get(next.id)?.focus();
   }
 
   function buildTabMenu(tabId: string): MenuItem[] {
@@ -151,6 +165,11 @@ export function TabBar({ onOpenGlobalSearch }: TabBarProps = {}) {
               onActivate={() => setActiveTab(tab.id)}
               onEdit={() => setEditingId(tab.id)}
               onClose={() => requestCloseTab(tab.id)}
+              onArrow={(dir) => moveActive(tab.id, dir)}
+              registerRef={(el) => {
+                if (el) tabRefs.current.set(tab.id, el);
+                else tabRefs.current.delete(tab.id);
+              }}
               onContextMenu={(x, y) => setCtx({ x, y, tabId: tab.id })}
               onCommitRename={(next) => {
                 setEditingId(null);
@@ -230,6 +249,10 @@ type SortableTabProps = {
   onActivate: () => void;
   onEdit: () => void;
   onClose: () => void;
+  /** Arrow-key navigation: activate the neighbor tab in this direction. */
+  onArrow: (dir: -1 | 1) => void;
+  /** Expose the tab's DOM node so the parent can move focus on arrow nav. */
+  registerRef: (el: HTMLDivElement | null) => void;
   onContextMenu: (x: number, y: number) => void;
   onCommitRename: (value: string) => void;
   onCancelEdit: () => void;
@@ -243,6 +266,8 @@ function SortableTab({
   onActivate,
   onEdit,
   onClose,
+  onArrow,
+  registerRef,
   onContextMenu,
   onCommitRename,
   onCancelEdit,
@@ -266,16 +291,36 @@ function SortableTab({
 
   return (
     <div
-      ref={setNodeRef}
+      ref={(el) => {
+        setNodeRef(el);
+        registerRef(el);
+      }}
       style={style}
       {...dragProps}
       role="tab"
       aria-selected={isActive}
+      tabIndex={isActive ? 0 : -1}
       className={`tab ${isActive ? "tab--active" : ""}`}
       onClick={() => {
         if (!isEditing) onActivate();
       }}
       onDoubleClick={onEdit}
+      onKeyDown={(e) => {
+        if (isEditing) return;
+        if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+          e.preventDefault();
+          onArrow(e.key === "ArrowLeft" ? -1 : 1);
+        } else if (e.key === "Enter" || e.key === " ") {
+          // Enter/Space on an inactive tab activates it; on the already
+          // active tab it starts rename (keyboard twin of double-click).
+          e.preventDefault();
+          if (isActive) onEdit();
+          else onActivate();
+        } else if (e.key === "F2") {
+          e.preventDefault();
+          onEdit();
+        }
+      }}
       onContextMenu={(e) => {
         e.preventDefault();
         onContextMenu(e.clientX, e.clientY);

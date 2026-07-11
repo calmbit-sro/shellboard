@@ -124,7 +124,12 @@ function App() {
     aboutOpen ||
     globalSearchOpen ||
     runningAppsOpen ||
-    shortcutsOpen;
+    shortcutsOpen ||
+    // Store-driven confirmation dialogs count too — a reflexive Cmd+W
+    // while one is up must not close the tab behind it.
+    pendingCloseTabId !== null ||
+    (!!pendingCullTabIds && pendingCullTabIds.length > 0) ||
+    pendingQuit;
 
   // Modal-open callbacks shared by the keyboard dispatcher and the native-menu
   // listener. useState setters are referentially stable, so an empty-deps memo
@@ -301,6 +306,12 @@ function App() {
       // captured keys don't also trigger their action.
       if (shortcutCapture.isActive()) return;
 
+      // A dialog is up — stand down so shortcuts can't act on the hidden
+      // terminal behind it (Cmd+W would close a tab, Cmd+T open one, and
+      // overlays would stack over the dialog). Dialogs handle their own
+      // keys (Escape, Enter, arrows).
+      if (modalOpenRef.current) return;
+
       // `?` opens the shortcut cheat sheet — non-modifier, skip when typing.
       if (e.key === "?" && !isEditable(e.target)) {
         consume();
@@ -313,18 +324,15 @@ function App() {
       );
 
       // Recent-terminal switcher (alt-tab). Open on first press, step on
-      // repeats while held. Suppressed while a modal is up so the overlay
-      // never stacks over a dialog.
-      if (!modalOpenRef.current) {
-        for (const dir of ["next", "prev"] as const) {
-          const b = resolved[`switcher.${dir}`];
-          if (b && matchBinding(e, b)) {
-            consume();
-            const store = useAppStore.getState();
-            if (store.switcher) store.stepSwitcher(dir);
-            else store.openSwitcher(dir, bindingMods(b));
-            return;
-          }
+      // repeats while held.
+      for (const dir of ["next", "prev"] as const) {
+        const b = resolved[`switcher.${dir}`];
+        if (b && matchBinding(e, b)) {
+          consume();
+          const store = useAppStore.getState();
+          if (store.switcher) store.stepSwitcher(dir);
+          else store.openSwitcher(dir, bindingMods(b));
+          return;
         }
       }
 

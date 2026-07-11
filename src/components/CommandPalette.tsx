@@ -5,6 +5,7 @@ import { useAppStore } from "../store/appStore";
 import { THEMES } from "../utils/themes";
 import { cwdLabel } from "../utils/path";
 import { collectLeaves } from "../utils/mosaic";
+import { useFocusTrap } from "../hooks/useFocusTrap";
 import { Search } from "./icons";
 import "./CommandPalette.css";
 
@@ -61,6 +62,7 @@ export function CommandPalette({
     .slice(0, RECENT_MAX);
 
   const listRef = useRef<HTMLDivElement | null>(null);
+  useFocusTrap(listRef, open);
 
   // Close on outside click + Escape. cmdk doesn't manage open/close state
   // itself, so we listen for Escape at capture phase to beat App.tsx's
@@ -99,7 +101,13 @@ export function CommandPalette({
 
   return (
     <div className="palette-backdrop">
-      <div ref={listRef} className="palette">
+      <div
+        ref={listRef}
+        className="palette"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
+      >
         <Command label="Command palette" loop>
           <div className="palette__header">
             <Search size={15} className="palette__icon" />

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../store/appStore";
 import { collectLeaves } from "../utils/mosaic";
 import { listTerminals, getTerminal } from "../utils/terminalRegistry";
+import { useFocusTrap } from "../hooks/useFocusTrap";
 import { Search } from "./icons";
 import "./GlobalSearch.css";
 
@@ -20,12 +21,18 @@ type GlobalSearchProps = {
   onClose: () => void;
 };
 
+/** Only the most recent lines of each terminal are scanned — at the maximum
+ * scrollback setting (100k lines) a full walk of every buffer would block the
+ * main thread for noticeable stretches. */
+const MAX_SCAN_LINES = 10_000;
+const MAX_HITS = 200;
+
 /**
- * Scan every mounted xterm's buffer for matches. Cheap at typical buffer
- * sizes (scrollback is usually a few thousand lines per terminal); we
- * run it synchronously when the query changes.
+ * Scan every mounted xterm's buffer for matches. Bounded by MAX_SCAN_LINES
+ * per terminal and MAX_HITS overall, and runs on the debounced query rather
+ * than per keystroke.
  */
-function search(query: string, tabsById: Map<string, unknown>): Hit[] {
+function search(query: string): Hit[] {
   const q = query.toLowerCase();
   if (!q) return [];
   const state = useAppStore.getState();
@@ -44,7 +51,7 @@ function search(query: string, tabsById: Map<string, unknown>): Hit[] {
     const buf = xterm.buffer.active;
     // Search the scrollback + active region; length covers both.
     const total = buf.length;
-    for (let i = 0; i < total; i++) {
+    for (let i = Math.max(0, total - MAX_SCAN_LINES); i < total; i++) {
       const line = buf.getLine(i);
       if (!line) continue;
       const text = line.translateToString(true);
@@ -58,33 +65,34 @@ function search(query: string, tabsById: Map<string, unknown>): Hit[] {
           line: i,
           text: text.trim(),
         });
-        // Cap per-terminal to keep the UI snappy for runaway matches.
-        if (hits.length >= 200) break;
+        // Cap to keep the UI snappy for runaway matches.
+        if (hits.length >= MAX_HITS) break;
       }
     }
-    if (hits.length >= 200) break;
+    if (hits.length >= MAX_HITS) break;
   }
 
-  // Unused arg — satisfying lint without changing call site.
-  void tabsById;
   return hits;
 }
 
 export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selectedIdx, setSelectedIdx] = useState(0);
   const listRef = useRef<HTMLDivElement | null>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  useFocusTrap(listRef, open);
 
-  const tabs = useAppStore((s) => s.tabs);
-  const tabsById = useMemo(
-    () => new Map(tabs.map((t) => [t.id, t])),
-    [tabs],
-  );
+  // Debounce the buffer scan — searching on every keystroke visibly blocks
+  // typing once many terminals with large scrollbacks are mounted.
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedQuery(query), 150);
+    return () => clearTimeout(handle);
+  }, [query]);
 
   const hits = useMemo(
-    () => (open ? search(query, tabsById) : []),
-    [query, open, tabsById],
+    () => (open ? search(debouncedQuery) : []),
+    [debouncedQuery, open],
   );
 
   useEffect(() => {
@@ -94,6 +102,7 @@ export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
   useEffect(() => {
     if (!open) return;
     setQuery("");
+    setDebouncedQuery("");
     setSelectedIdx(0);
   }, [open]);
 
@@ -149,7 +158,13 @@ export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
 
   return (
     <div className="gsearch-backdrop">
-      <div ref={listRef} className="gsearch">
+      <div
+        ref={listRef}
+        className="gsearch"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search all terminals"
+      >
         <div className="gsearch__header">
           <Search size={15} className="gsearch__icon" />
           <input
@@ -184,7 +199,7 @@ export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
               Type to search buffers of all open terminals.
             </div>
           )}
-          {query && hits.length === 0 && (
+          {query && query === debouncedQuery && hits.length === 0 && (
             <div className="gsearch__hint">No matches.</div>
           )}
           {hits.map((hit, i) => (
@@ -216,7 +231,6 @@ export function GlobalSearch({ open, onClose }: GlobalSearchProps) {
         </div>
         <div className="gsearch__footer">
           <span>↵ jump to tab</span>
-          <span>⌘↵ open in new split</span>
           <span className="gsearch__footer-spacer" />
           <span>scrollback included</span>
         </div>

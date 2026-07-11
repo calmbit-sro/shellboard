@@ -1,4 +1,5 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
+import { useFocusTrap } from "../hooks/useFocusTrap";
 import "./Modal.css";
 
 type ModalProps = {
@@ -10,6 +11,9 @@ type ModalProps = {
 };
 
 export function Modal({ open, onClose, title, children, maxWidth = 420 }: ModalProps) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  useFocusTrap(dialogRef, open);
+
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
@@ -27,7 +31,12 @@ export function Modal({ open, onClose, title, children, maxWidth = 420 }: ModalP
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div
+        ref={dialogRef}
         className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
         style={{ maxWidth }}
         onMouseDown={(e) => e.stopPropagation()}
       >

@@ -223,6 +223,9 @@ export function RunningApps({ open, onClose }: RunningAppsProps) {
       <div
         ref={listRef}
         className="rapps"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Running apps"
         tabIndex={-1}
         autoFocus
         onKeyDown={(e) => {
