@@ -54,6 +54,10 @@ export type Tab = {
   /** Session-only flag (not persisted): PTY output arrived while tab was
    * inactive. Cleared when the tab becomes active. */
   hasUnread: boolean;
+  /** Session-only: the most recent command in this tab finished with a
+   * nonzero exit code while the tab was inactive (OSC 133;D). Cleared on
+   * activation, or by a subsequent successful command. */
+  hasFailed: boolean;
   /** When true, keystrokes typed into any panel in this tab are fanned out
    * to all panels. Useful for multi-server admin. */
   broadcastInput: boolean;
@@ -791,6 +795,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
           focusedLeafId: terminalId,
           projectId,
           hasUnread: false,
+          hasFailed: false,
           broadcastInput: false,
         },
       ],
@@ -961,7 +966,9 @@ export const useAppStore = create<AppState>()((set, get) => ({
         [tab.projectId]: tabId,
       },
       tabs: state.tabs.map((t) =>
-        t.id === tabId && t.hasUnread ? { ...t, hasUnread: false } : t,
+        t.id === tabId && (t.hasUnread || t.hasFailed)
+          ? { ...t, hasUnread: false, hasFailed: false }
+          : t,
       ),
       recentLeafIds: tab.focusedLeafId
         ? bumpRecent(state.recentLeafIds, tab.focusedLeafId)
@@ -1241,7 +1248,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
       },
       tabs: s.tabs.map((t) =>
         t.id === tab.id
-          ? { ...t, focusedLeafId: leafId, hasUnread: false }
+          ? { ...t, focusedLeafId: leafId, hasUnread: false, hasFailed: false }
           : t,
       ),
       recentLeafIds: bumpRecent(s.recentLeafIds, leafId),
@@ -1595,6 +1602,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
             focusedLeafId: firstLeafOf(mosaic),
             projectId,
             hasUnread: false,
+            hasFailed: false,
             broadcastInput: false,
           });
         }
@@ -1696,6 +1704,23 @@ export const useAppStore = create<AppState>()((set, get) => ({
         },
       },
     }));
+    // Reflect the result on the owning tab's activity dot: red for a
+    // failure that happened out of sight, cleared again by a subsequent
+    // success. Active-tab failures are visible on screen — no dot.
+    const state = get();
+    const tab = state.tabs.find(
+      (t) => t.mosaic && collectLeaves(t.mosaic).includes(terminalId),
+    );
+    if (tab && tab.id !== state.activeTabId) {
+      const failed = exitCode !== 0;
+      if (tab.hasFailed !== failed) {
+        set((s) => ({
+          tabs: s.tabs.map((t) =>
+            t.id === tab.id ? { ...t, hasFailed: failed } : t,
+          ),
+        }));
+      }
+    }
   },
 
   restoreSession: async (session, buffers) => {

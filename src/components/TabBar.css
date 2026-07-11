@@ -57,6 +57,11 @@
   background: var(--orange);
 }
 
+/* The last command in the tab failed (OSC 133 exit code ≠ 0). */
+.tab__activity--failed {
+  background: #e5484d;
+}
+
 .tab__broadcast {
   color: var(--accent);
   flex-shrink: 0;

@@ -341,7 +341,10 @@ function SortableTab({
       ) : (
         <>
           {tab.hasUnread && !isActive && (
-            <span className="tab__activity" aria-label="Activity" />
+            <span
+              className={`tab__activity${tab.hasFailed ? " tab__activity--failed" : ""}`}
+              aria-label={tab.hasFailed ? "Command failed" : "Activity"}
+            />
           )}
           {tab.broadcastInput && (
             <Broadcast
