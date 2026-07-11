@@ -94,7 +94,12 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
     const saved = useAppStore.getState().consumeRestoredBuffer(terminalId);
     if (saved) {
       try {
-        xterm.write(saved);
+        // The callback runs after xterm's async parse — by then the mount
+        // fit() has resized the buffer, and that reflow can leave the
+        // viewport anchored above the end. Pin it back to the bottom so the
+        // prompt lands where the user left it (and subsequent PTY writes
+        // keep auto-scrolling).
+        xterm.write(saved, () => xterm.scrollToBottom());
       } catch {
         /* ignore malformed saved data */
       }
