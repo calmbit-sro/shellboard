@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 pub struct PtySession {
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
@@ -15,6 +15,19 @@ pub struct PtySession {
     // session's life, so the running-apps poll can read it under the sessions
     // lock without contending with the reader/kill on the `child` mutex.
     shell_pid: Option<u32>,
+}
+
+impl Drop for PtySession {
+    fn drop(&mut self) {
+        // Kill (no-op if already exited) and reap the child so it never
+        // lingers as a zombie holding one of the finite PTY slots (macOS caps
+        // ptmx at kern.tty.ptmx_max = 511). Both calls can block on process
+        // teardown, so sessions must be dropped off the async worker pool.
+        if let Ok(mut child) = self.child.lock() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
 }
 
 #[derive(Default)]
@@ -519,6 +532,7 @@ pub async fn spawn_pty(
 
     // Reader is blocking I/O — run on a dedicated blocking task.
     let app_for_reader = app.clone();
+    let id_for_reader = id.clone();
     tokio::task::spawn_blocking(move || {
         let mut reader = reader;
         let mut buf = [0u8; 8192];
@@ -553,9 +567,20 @@ pub async fn spawn_pty(
             let _ = app_for_reader.emit(&data_event, PtyDataPayload { data });
         }
         // Notify the frontend that this PTY has ended so it can remove the
-        // panel. Session cleanup on the Rust side still happens via kill_pty
-        // when the frontend reacts.
+        // panel.
         let _ = app_for_reader.emit(&exit_event, ());
+        // Reap the session ourselves instead of relying on the frontend's
+        // kill_pty round-trip — if the exit event is missed (webview gone,
+        // listener already torn down) the session would otherwise leak its
+        // PTY slot forever. kill_pty on the removed id stays a no-op Ok.
+        // We're on a blocking thread, so dropping (kill + wait) here is fine.
+        let session = app_for_reader
+            .state::<PtyManager>()
+            .sessions
+            .lock()
+            .ok()
+            .and_then(|mut sessions| sessions.remove(&id_for_reader));
+        drop(session);
     });
 
     Ok(id)
@@ -575,12 +600,18 @@ pub async fn write_to_pty(
         let session = sessions.get(&id).ok_or_else(|| format!("no session {id}"))?;
         session.writer.clone()
     };
-    let mut writer = writer.lock().map_err(|e| format!("lock poisoned: {e}"))?;
-    writer
-        .write_all(data.as_bytes())
-        .map_err(|e| format!("write failed: {e}"))?;
-    writer.flush().map_err(|e| format!("flush failed: {e}"))?;
-    Ok(())
+    // A PTY write blocks when the kernel buffer is full and the child isn't
+    // draining it (e.g. a stopped process). Run it off the async workers so a
+    // few stuck writes can't starve every other command.
+    tokio::task::spawn_blocking(move || {
+        let mut writer = writer.lock().map_err(|e| format!("lock poisoned: {e}"))?;
+        writer
+            .write_all(data.as_bytes())
+            .map_err(|e| format!("write failed: {e}"))?;
+        writer.flush().map_err(|e| format!("flush failed: {e}"))
+    })
+    .await
+    .map_err(|e| format!("join failed: {e}"))?
 }
 
 #[tauri::command]
@@ -618,9 +649,11 @@ pub async fn kill_pty(state: State<'_, PtyManager>, id: String) -> Result<(), St
         .map_err(|e| format!("lock poisoned: {e}"))?
         .remove(&id);
     if let Some(session) = session {
-        if let Ok(mut child) = session.child.lock() {
-            let _ = child.kill();
-        }
+        // Drop kills + waits (reaps) the child — blocking process teardown,
+        // so keep it off the async worker pool.
+        tokio::task::spawn_blocking(move || drop(session))
+            .await
+            .map_err(|e| format!("join failed: {e}"))?;
     }
     Ok(())
 }
@@ -769,7 +802,7 @@ pub struct RunningAppsSnapshot {
 /// scrollback buffers live) runs out-of-process; this captures it only if that
 /// helper is a descendant of the main process, so treat the number as approximate.
 #[tauri::command]
-pub fn running_apps_snapshot(
+pub async fn running_apps_snapshot(
     state: State<'_, PtyManager>,
 ) -> Result<RunningAppsSnapshot, String> {
     // Copy out (sessionId, shell_pid) and the count, then release the lock.
@@ -787,46 +820,53 @@ pub fn running_apps_snapshot(
         )
     };
 
-    let main_pid = sysinfo::get_current_pid().map_err(|e| format!("current pid: {e}"))?;
+    // The full process-table refresh takes tens of ms on a busy machine —
+    // run it on a blocking thread so the ~2 s poll never stalls the async
+    // workers (or, as before this was async, the main thread / UI).
+    tokio::task::spawn_blocking(move || {
+        let main_pid = sysinfo::get_current_pid().map_err(|e| format!("current pid: {e}"))?;
 
-    // One snapshot: process name + parent pid (always populated) + cmdline + RSS.
-    let mut sys = System::new();
-    sys.refresh_processes_specifics(
-        ProcessesToUpdate::All,
-        true,
-        ProcessRefreshKind::nothing()
-            .with_cmd(UpdateKind::Always)
-            .with_memory(),
-    );
+        // One snapshot: process name + parent pid (always populated) + cmdline + RSS.
+        let mut sys = System::new();
+        sys.refresh_processes_specifics(
+            ProcessesToUpdate::All,
+            true,
+            ProcessRefreshKind::nothing()
+                .with_cmd(UpdateKind::Always)
+                .with_memory(),
+        );
 
-    // Build pid -> children once from the snapshot.
-    let mut children: HashMap<Pid, Vec<Pid>> = HashMap::new();
-    for (pid, proc_) in sys.processes() {
-        if let Some(parent) = proc_.parent() {
-            children.entry(parent).or_default().push(*pid);
+        // Build pid -> children once from the snapshot.
+        let mut children: HashMap<Pid, Vec<Pid>> = HashMap::new();
+        for (pid, proc_) in sys.processes() {
+            if let Some(parent) = proc_.parent() {
+                children.entry(parent).or_default().push(*pid);
+            }
         }
-    }
 
-    // Per-terminal apps.
-    let mut apps = HashMap::new();
-    for (session_id, shell_pid) in &shell_pids {
-        if let Some(app) = pick_running_app(Pid::from_u32(*shell_pid), &sys, &children) {
-            apps.insert(session_id.clone(), app);
+        // Per-terminal apps.
+        let mut apps = HashMap::new();
+        for (session_id, shell_pid) in &shell_pids {
+            if let Some(app) = pick_running_app(Pid::from_u32(*shell_pid), &sys, &children) {
+                apps.insert(session_id.clone(), app);
+            }
         }
-    }
 
-    // Shellboard's own footprint: main subtree minus the terminal subtrees.
-    let main_total = subtree_memory(main_pid, &sys, &children);
-    let terminals_total: u64 = shell_pids
-        .iter()
-        .map(|(_, p)| subtree_memory(Pid::from_u32(*p), &sys, &children))
-        .sum();
+        // Shellboard's own footprint: main subtree minus the terminal subtrees.
+        let main_total = subtree_memory(main_pid, &sys, &children);
+        let terminals_total: u64 = shell_pids
+            .iter()
+            .map(|(_, p)| subtree_memory(Pid::from_u32(*p), &sys, &children))
+            .sum();
 
-    Ok(RunningAppsSnapshot {
-        apps,
-        self_memory: SelfMemory {
-            app_rss_bytes: main_total.saturating_sub(terminals_total),
-            terminal_count,
-        },
+        Ok(RunningAppsSnapshot {
+            apps,
+            self_memory: SelfMemory {
+                app_rss_bytes: main_total.saturating_sub(terminals_total),
+                terminal_count,
+            },
+        })
     })
+    .await
+    .map_err(|e| format!("join failed: {e}"))?
 }
