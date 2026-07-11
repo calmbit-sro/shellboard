@@ -41,6 +41,7 @@ fn mac_accel(id: &str) -> &'static str {
     match id {
         "menu.tab.new" => "CmdOrCtrl+T",
         "menu.tab.close" => "CmdOrCtrl+W",
+        "menu.tab.reopen" => "CmdOrCtrl+Shift+T",
         "menu.panel.close" => "CmdOrCtrl+Shift+W",
         "menu.tab.next" => "CmdOrCtrl+Shift+]",
         "menu.tab.prev" => "CmdOrCtrl+Shift+[",
@@ -78,6 +79,7 @@ fn linux_combo(id: &str) -> &'static str {
     match id {
         "menu.tab.new" => "Ctrl+T",
         "menu.tab.close" => "Ctrl+W",
+        "menu.tab.reopen" => "Ctrl+Shift+T",
         "menu.panel.close" => "Ctrl+Shift+W",
         "menu.tab.next" => "Ctrl+Shift+]",
         "menu.tab.prev" => "Ctrl+Shift+[",
@@ -228,6 +230,7 @@ fn build_menu<R: Runtime>(
             .item(&shortcut_item(h, "menu.project.quickAdd", "Quick-Add Project from cwd", shortcuts)?)
             .separator()
             .item(&shortcut_item(h, "menu.tab.close", "Close Tab", shortcuts)?)
+            .item(&shortcut_item(h, "menu.tab.reopen", "Reopen Closed Tab", shortcuts)?)
             .text("menu.tab.closeOthers", "Close Other Tabs")
             .text("menu.tab.closeRight", "Close Tabs to the Right")
             .item(&shortcut_item(h, "menu.panel.close", "Close Panel", shortcuts)?)
@@ -285,6 +288,7 @@ fn build_menu<R: Runtime>(
             .item(&shortcut_item(h, "menu.settings.open", "Settings…", shortcuts)?)
             .separator()
             .item(&shortcut_item(h, "menu.tab.close", "Close Tab", shortcuts)?)
+            .item(&shortcut_item(h, "menu.tab.reopen", "Reopen Closed Tab", shortcuts)?)
             .text("menu.tab.closeOthers", "Close Other Tabs")
             .text("menu.tab.closeRight", "Close Tabs to the Right")
             .item(&shortcut_item(h, "menu.panel.close", "Close Panel", shortcuts)?)

@@ -37,6 +37,12 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
     defaultBinding: primary({ shift: true, key: "w" }),
   },
   {
+    id: "tab.reopen",
+    category: "Tabs",
+    label: "Reopen closed tab",
+    defaultBinding: primary({ shift: true, key: "t" }),
+  },
+  {
     id: "tab.next",
     category: "Tabs",
     label: "Next tab",

@@ -136,6 +136,7 @@ export function createActionHandlers(
       const store = useAppStore.getState();
       if (store.activeTabId) store.requestCloseTab(store.activeTabId);
     },
+    "tab.reopen": () => void useAppStore.getState().reopenClosedTab(),
     "tab.closeOthers": () => {
       const store = useAppStore.getState();
       if (store.activeTabId) void store.closeOtherTabs(store.activeTabId);
