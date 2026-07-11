@@ -114,9 +114,22 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
     // line below it (the cursor is already parked at the end of the
     // restored content by `xterm.write(saved)`).
     let filterStartupClears = !!saved;
+    let graceTimer: ReturnType<typeof setTimeout> | null = null;
+    let gracePin: ReturnType<typeof setInterval> | null = null;
     if (filterStartupClears) {
-      setTimeout(() => {
+      // Belt and braces for the restore window: late startup output (prompt
+      // frameworks finishing async init, SIGWINCH-triggered redraws) can
+      // still yank the viewport off the restored tail through paths the
+      // clear filter and the write callbacks don't cover. Until the grace
+      // window closes, keep pulling it back to the bottom.
+      gracePin = setInterval(() => {
+        const buf = xterm.buffer.active;
+        if (buf.viewportY < buf.baseY) xterm.scrollToBottom();
+      }, 250);
+      graceTimer = setTimeout(() => {
         filterStartupClears = false;
+        if (gracePin) clearInterval(gracePin);
+        gracePin = null;
       }, 3000);
     }
     // \e[2J, \e[3J (any single digit), \e[H, \e[;H, \e[1;1H
@@ -357,6 +370,8 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
       disposed = true;
       resizeObserver.disconnect();
       if (fitRaf !== null) cancelAnimationFrame(fitRaf);
+      if (graceTimer) clearTimeout(graceTimer);
+      if (gracePin) clearInterval(gracePin);
       container.removeEventListener("mouseup", onMouseUp);
       container.removeEventListener("mousedown", onMouseDown);
       for (const d of disposables) d.dispose();
