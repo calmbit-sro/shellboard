@@ -15,7 +15,11 @@
     "window-state:default",
     {
       "identifier": "opener:allow-open-path",
-      "allow": [{ "path": "**" }]
+      "allow": [
+        { "path": "$HOME" },
+        { "path": "$HOME/**" },
+        { "path": "/Volumes/**" }
+      ]
     }
   ]
 }
