@@ -147,6 +147,12 @@ mod tests {
         assert!(body.contains("133;D"));
         assert!(body.contains("_shellboard_cmd_ran"));
 
+        let (args, _) = super::osc7_wiring("/bin/bash");
+        assert_eq!(args[0], "--rcfile");
+        let rc = std::fs::read_to_string(&args[1]).unwrap();
+        assert!(rc.contains("133;A") && rc.contains("133;C") && rc.contains("133;D"));
+        assert!(rc.contains("trap -p DEBUG"));
+
         let (args, _) = super::osc7_wiring("/usr/bin/fish");
         let joined = args.join(" ");
         assert!(joined.contains("133;A") && joined.contains("133;D"));
