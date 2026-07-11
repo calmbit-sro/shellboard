@@ -607,12 +607,15 @@ pub async fn spawn_pty(
         // listener already torn down) the session would otherwise leak its
         // PTY slot forever. kill_pty on the removed id stays a no-op Ok.
         // We're on a blocking thread, so dropping (kill + wait) here is fine.
-        let session = app_for_reader
-            .state::<PtyManager>()
-            .sessions
-            .lock()
-            .ok()
-            .and_then(|mut sessions| sessions.remove(&id_for_reader));
+        // try_state: during process teardown managed state may already be
+        // gone, and state() would panic this task.
+        let session = app_for_reader.try_state::<PtyManager>().and_then(|state| {
+            state
+                .sessions
+                .lock()
+                .ok()
+                .and_then(|mut sessions| sessions.remove(&id_for_reader))
+        });
         drop(session);
     });
 

@@ -281,6 +281,9 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
     disposables.push(
       xterm.onResize(({ cols, rows }) => {
         void invoke("resize_pty", { id: terminalId, cols, rows });
+        // A resize reflows soft-wrap boundaries in the buffer, so the cached
+        // serialized snapshot no longer matches what's on screen.
+        markTerminalBufferDirty(terminalId);
       }),
     );
 
