@@ -530,45 +530,78 @@ pub async fn spawn_pty(
         .map_err(|e| format!("lock poisoned: {e}"))?
         .insert(id.clone(), session);
 
-    // Reader is blocking I/O — run on a dedicated blocking task.
-    let app_for_reader = app.clone();
-    let id_for_reader = id.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut reader = reader;
-        let mut buf = [0u8; 8192];
+    // Reader is blocking I/O — run on a dedicated blocking task. It forwards
+    // raw bytes to an async emitter task that coalesces bursts into fewer,
+    // larger `data` events: under heavy output (builds, `cat` of a big file)
+    // one event per 8 KB read floods the IPC bridge with per-event JSON
+    // serialization the frontend can't keep up with.
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+
+    let app_for_emitter = app.clone();
+    tauri::async_runtime::spawn(async move {
+        // Cap a coalesced batch so a single event payload stays bounded.
+        const MAX_BATCH: usize = 64 * 1024;
         // Carries 0–3 trailing bytes that look like the start of an
         // incomplete multi-byte UTF-8 sequence, so we don't decode a
         // chunk-boundary split as replacement chars. e.g. `❯` is E2 9D AF
         // and a read that ends mid-glyph would otherwise emit `��`.
         let mut pending: Vec<u8> = Vec::new();
+        while let Some(chunk) = rx.recv().await {
+            pending.extend_from_slice(&chunk);
+            // Drain whatever the reader already queued. Batching kicks in
+            // exactly when output outpaces emission; an interactive keystroke
+            // echo (empty queue) is emitted with zero added latency.
+            while pending.len() < MAX_BATCH {
+                match rx.try_recv() {
+                    Ok(next) => pending.extend_from_slice(&next),
+                    Err(_) => break,
+                }
+            }
+            let split = utf8_safe_split(&pending);
+            if split == 0 {
+                continue; // only an incomplete sequence so far — wait for more
+            }
+            let tail = pending.split_off(split);
+            let data = String::from_utf8_lossy(&pending).to_string();
+            pending = tail;
+            if app_for_emitter
+                .emit(&data_event, PtyDataPayload { data })
+                .is_err()
+            {
+                // Webview is gone. Dropping rx makes the reader's send fail,
+                // which stops the read loop and reaps the session.
+                return;
+            }
+        }
+        // Channel closed — the reader hit EOF. Flush whatever's still
+        // buffered (an incomplete sequence will never complete now, so let
+        // lossy substitute replacement chars), then notify the frontend that
+        // this PTY has ended so it can remove the panel.
+        if !pending.is_empty() {
+            let data = String::from_utf8_lossy(&pending).to_string();
+            let _ = app_for_emitter.emit(&data_event, PtyDataPayload { data });
+        }
+        let _ = app_for_emitter.emit(&exit_event, ());
+    });
+
+    let app_for_reader = app.clone();
+    let id_for_reader = id.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut reader = reader;
+        let mut buf = [0u8; 8192];
         loop {
             match reader.read(&mut buf) {
                 Ok(0) => break, // EOF, child exited
                 Ok(n) => {
-                    pending.extend_from_slice(&buf[..n]);
-                    let split = utf8_safe_split(&pending);
-                    let tail = pending.split_off(split);
-                    let data = String::from_utf8_lossy(&pending).to_string();
-                    pending = tail;
-                    if app_for_reader
-                        .emit(&data_event, PtyDataPayload { data })
-                        .is_err()
-                    {
-                        break;
+                    if tx.send(buf[..n].to_vec()).is_err() {
+                        break; // emitter gone (webview closed)
                     }
                 }
                 Err(_) => break,
             }
         }
-        // Flush whatever's still buffered — at EOF an incomplete sequence
-        // will never complete, so let lossy substitute replacement chars.
-        if !pending.is_empty() {
-            let data = String::from_utf8_lossy(&pending).to_string();
-            let _ = app_for_reader.emit(&data_event, PtyDataPayload { data });
-        }
-        // Notify the frontend that this PTY has ended so it can remove the
-        // panel.
-        let _ = app_for_reader.emit(&exit_event, ());
+        // Close the channel so the emitter flushes and emits the exit event.
+        drop(tx);
         // Reap the session ourselves instead of relying on the frontend's
         // kill_pty round-trip — if the exit event is missed (webview gone,
         // listener already torn down) the session would otherwise leak its
