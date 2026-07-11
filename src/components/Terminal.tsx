@@ -19,6 +19,7 @@ import {
   registerTerminal,
   unregisterTerminal,
 } from "../utils/terminalRegistry";
+import { markTerminalBufferDirty } from "../utils/sessionSerialize";
 
 const IS_MAC =
   typeof navigator !== "undefined" &&
@@ -235,7 +236,9 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
           // isn't currently looking at it.
           useAppStore.getState().markTabActivity(terminalId);
           // Ask for a session save so scrollback gets snapshotted after
-          // new output. Heavily debounced inside the store.
+          // new output. Heavily debounced inside the store; marking dirty
+          // means only this terminal gets re-serialized by the save.
+          markTerminalBufferDirty(terminalId);
           scheduleSessionSave();
         },
       );

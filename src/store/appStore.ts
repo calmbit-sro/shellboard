@@ -22,6 +22,7 @@ import {
 import {
   buildMosaicFromLayout,
   collectLeafBufferIds,
+  dropTerminalBuffer,
   serializeSession,
   type PersistedSession,
   type PersistedTab,
@@ -477,7 +478,73 @@ function uuid(): string {
   return `tab-${Math.random().toString(36).slice(2)}-${Date.now()}`;
 }
 
+// shellboard.json is hand-editable — like settings (clampSettings), projects
+// and groups must survive a corrupt or partial entry. Anything without the
+// required shape is dropped instead of flowing into PTY spawns.
+function sanitizeSnippets(v: unknown): Snippet[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out = v.filter(
+    (s): s is Snippet =>
+      typeof s === "object" &&
+      s !== null &&
+      typeof (s as Snippet).id === "string" &&
+      typeof (s as Snippet).name === "string" &&
+      typeof (s as Snippet).command === "string",
+  );
+  return out.length > 0 ? out : undefined;
+}
+
+function sanitizeProjects(v: unknown): Project[] | null {
+  if (!Array.isArray(v)) return null;
+  const out: Project[] = [];
+  for (const raw of v) {
+    if (typeof raw !== "object" || raw === null) continue;
+    const p = raw as Partial<Project>;
+    if (
+      typeof p.id !== "string" ||
+      typeof p.name !== "string" ||
+      typeof p.path !== "string" ||
+      !p.path.trim()
+    ) {
+      continue;
+    }
+    out.push({
+      id: p.id,
+      name: p.name,
+      path: p.path,
+      color: typeof p.color === "string" ? p.color : "#6b7280",
+      createdAt: typeof p.createdAt === "number" ? p.createdAt : Date.now(),
+      groupId: typeof p.groupId === "string" ? p.groupId : null,
+      snippets: sanitizeSnippets(p.snippets),
+      autoCwdName: p.autoCwdName === true ? true : undefined,
+    });
+  }
+  return out;
+}
+
+function sanitizeGroups(v: unknown): ProjectGroup[] | null {
+  if (!Array.isArray(v)) return null;
+  const out: ProjectGroup[] = [];
+  for (const raw of v) {
+    if (typeof raw !== "object" || raw === null) continue;
+    const g = raw as Partial<ProjectGroup>;
+    if (typeof g.id !== "string" || typeof g.name !== "string") continue;
+    out.push({
+      id: g.id,
+      name: g.name,
+      collapsed: !!g.collapsed,
+      icon: typeof g.icon === "string" ? g.icon : undefined,
+    });
+  }
+  return out;
+}
+
 const RECENT_CAP = 20;
+
+/** How long a restored scrollback snapshot stays in the store after its
+ * first consumer. Long enough for StrictMode's second mount, short enough
+ * that multi-MB strings don't accumulate for the session's lifetime. */
+const RESTORED_BUFFER_TTL_MS = 10_000;
 
 function bumpRecent(list: string[], id: string): string[] {
   const next = [id, ...list.filter((x) => x !== id)];
@@ -506,6 +573,9 @@ async function spawnTerminal(
 }
 
 async function killTerminal(id: string): Promise<void> {
+  // Every path that ends a PTY funnels through here — also the right spot
+  // to release the terminal's cached serialized snapshot.
+  dropTerminalBuffer(id);
   try {
     await invoke("kill_pty", { id });
   } catch {
@@ -583,16 +653,11 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
   hydrate: (data) =>
     set((state) => {
-      // Older config files predate groups — normalize so every project has
-      // groupId at minimum (null = ungrouped).
-      const loadedProjects = (data.projects ?? state.projects).map((p) => ({
-        ...p,
-        groupId: p.groupId ?? null,
-      }));
-      const loadedGroups = (data.groups ?? state.groups).map((g) => ({
-        ...g,
-        collapsed: !!g.collapsed,
-      }));
+      // Sanitizing also normalizes older config files that predate groups —
+      // every project gets groupId at minimum (null = ungrouped).
+      const loadedProjects =
+        sanitizeProjects(data.projects) ?? state.projects;
+      const loadedGroups = sanitizeGroups(data.groups) ?? state.groups;
       // Dangling groupIds (group was removed by hand in the JSON) become null.
       const groupIds = new Set(loadedGroups.map((g) => g.id));
       const projects = loadedProjects.map((p) =>
@@ -654,9 +719,21 @@ export const useAppStore = create<AppState>()((set, get) => ({
   consumeRestoredBuffer: (terminalId) => {
     // Non-destructive: React StrictMode double-mounts Terminal components
     // in dev. The first mount would otherwise steal the buffer, leaving
-    // the second (actually-visible) mount with an empty xterm. Entries
-    // stay until the next restoreSession overwrites restoredBuffers.
-    return get().restoredBuffers[terminalId] ?? null;
+    // the second (actually-visible) mount with an empty xterm. But don't
+    // retain the multi-MB snapshot forever either — drop it a beat after
+    // the first consumer, once both mounts have had their chance.
+    const buffer = get().restoredBuffers[terminalId] ?? null;
+    if (buffer !== null) {
+      setTimeout(() => {
+        set((state) => {
+          if (!(terminalId in state.restoredBuffers)) return state;
+          const next = { ...state.restoredBuffers };
+          delete next[terminalId];
+          return { restoredBuffers: next };
+        });
+      }, RESTORED_BUFFER_TTL_MS);
+    }
+    return buffer;
   },
 
   toggleBroadcast: (tabId) =>
@@ -1675,8 +1752,35 @@ export function scheduleSessionSave() {
  * Cancel any pending debounced save and write the current session
  * snapshot to disk immediately. Awaits disk write so callers (e.g. the
  * window-close handler) can block on completion before the process dies.
+ *
+ * Concurrent calls (the 10 s max-wait timer firing while a quit-flush is
+ * mid-write) coalesce onto the running save — two interleaved set/save
+ * pairs on the same Tauri stores could otherwise persist a mismatched
+ * session.json/buffers.json pair. A request that arrives mid-write queues
+ * exactly one follow-up flush so its state still lands on disk.
  */
-export async function flushSessionSave(): Promise<void> {
+let flushInFlight: Promise<void> | null = null;
+let flushRerunRequested = false;
+
+export function flushSessionSave(): Promise<void> {
+  if (flushInFlight) {
+    flushRerunRequested = true;
+    return flushInFlight;
+  }
+  flushInFlight = (async () => {
+    try {
+      do {
+        flushRerunRequested = false;
+        await flushSessionSaveOnce();
+      } while (flushRerunRequested);
+    } finally {
+      flushInFlight = null;
+    }
+  })();
+  return flushInFlight;
+}
+
+async function flushSessionSaveOnce(): Promise<void> {
   if (sessionSaveTimer) clearTimeout(sessionSaveTimer);
   if (sessionSaveMaxTimer) clearTimeout(sessionSaveMaxTimer);
   sessionSaveTimer = null;
