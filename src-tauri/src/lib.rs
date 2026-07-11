@@ -56,6 +56,8 @@ fn mac_accel(id: &str) -> &'static str {
         "menu.focus.down" => "CmdOrCtrl+Alt+Down",
         "menu.search.terminal" => "CmdOrCtrl+F",
         "menu.search.global" => "CmdOrCtrl+Shift+F",
+        "menu.prompt.prev" => "CmdOrCtrl+Up",
+        "menu.prompt.next" => "CmdOrCtrl+Down",
         "menu.zoom.in" => "CmdOrCtrl+=",
         "menu.zoom.out" => "CmdOrCtrl+-",
         "menu.zoom.reset" => "CmdOrCtrl+0",
@@ -91,6 +93,8 @@ fn linux_combo(id: &str) -> &'static str {
         "menu.focus.down" => "Ctrl+Alt+↓",
         "menu.search.terminal" => "Ctrl+F",
         "menu.search.global" => "Ctrl+Shift+F",
+        "menu.prompt.prev" => "Ctrl+↑",
+        "menu.prompt.next" => "Ctrl+↓",
         "menu.zoom.in" => "Ctrl+=",
         "menu.zoom.out" => "Ctrl+-",
         "menu.zoom.reset" => "Ctrl+0",
@@ -193,6 +197,9 @@ fn build_menu<R: Runtime>(
         .separator()
         .item(&shortcut_item(h, "menu.tab.next", "Next Tab", shortcuts)?)
         .item(&shortcut_item(h, "menu.tab.prev", "Previous Tab", shortcuts)?)
+        .separator()
+        .item(&shortcut_item(h, "menu.prompt.prev", "Previous Prompt", shortcuts)?)
+        .item(&shortcut_item(h, "menu.prompt.next", "Next Prompt", shortcuts)?)
         .separator()
         .item(&shortcut_item(h, "menu.apps.running", "Running Apps…", shortcuts)?)
         .build()?;

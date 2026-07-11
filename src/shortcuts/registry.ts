@@ -142,6 +142,20 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
     label: "Global search",
     defaultBinding: primary({ shift: true, key: "f" }),
   },
+  // Prompt jumping needs shell integration on (OSC 133 marks) — a no-op
+  // otherwise.
+  {
+    id: "prompt.prev",
+    category: "Terminal",
+    label: "Previous prompt",
+    defaultBinding: primary({ key: "ArrowUp" }),
+  },
+  {
+    id: "prompt.next",
+    category: "Terminal",
+    label: "Next prompt",
+    defaultBinding: primary({ key: "ArrowDown" }),
+  },
   {
     id: "apps.running",
     category: "Terminal",

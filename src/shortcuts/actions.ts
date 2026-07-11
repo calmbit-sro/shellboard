@@ -20,6 +20,8 @@ import {
 } from "../store/appStore";
 import { firstLeafOf } from "../utils/mosaic";
 import { cwdLabel } from "../utils/path";
+import { getTerminal } from "../utils/terminalRegistry";
+import { nearestPromptLine } from "../utils/promptMarks";
 import { randomProjectColor } from "../components/ColorPicker";
 import { bindingToAccelerator, formatBinding } from "./binding";
 import { resolveBindings, SHORTCUT_ACTIONS } from "./registry";
@@ -93,6 +95,18 @@ function activeAnchor(): string | null {
   const store = useAppStore.getState();
   const tab = store.tabs.find((t) => t.id === store.activeTabId);
   return tab?.focusedLeafId ?? (tab?.mosaic ? firstLeafOf(tab.mosaic) : null);
+}
+
+// Scroll the focused panel to the nearest OSC 133 prompt mark above/below
+// the current viewport top. No-op when shell integration is off or the
+// shell hasn't emitted marks yet.
+function jumpPrompt(dir: -1 | 1): void {
+  const leafId = activeAnchor();
+  if (!leafId) return;
+  const xterm = getTerminal(leafId);
+  if (!xterm) return;
+  const line = nearestPromptLine(leafId, xterm.buffer.active.viewportY, dir);
+  if (line !== null) xterm.scrollToLine(line);
 }
 
 function zoom(delta: 1 | -1 | 0): void {
@@ -171,6 +185,8 @@ export function createActionHandlers(
       if (tab?.focusedLeafId) store.setSearchingTerminal(tab.focusedLeafId);
     },
     "search.global": () => ctx.openGlobalSearch(),
+    "prompt.prev": () => jumpPrompt(-1),
+    "prompt.next": () => jumpPrompt(1),
     "apps.running": () => ctx.openRunningApps(),
     "zoom.in": () => zoom(1),
     "zoom.out": () => zoom(-1),
