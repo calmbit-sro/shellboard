@@ -200,9 +200,19 @@ export function CommandPalette({
               ))}
             </Command.Group>
 
-            {projects.some((p) => (p.snippets?.length ?? 0) > 0) && (
-              <Command.Group heading="Snippets" className="palette__group">
-                {projects.flatMap((p) =>
+            <Command.Group heading="Snippets" className="palette__group">
+              {activeProject && (
+                <Command.Item
+                  value={`snippet manage edit add new snippets ${activeProject.name}`}
+                  onSelect={run(() =>
+                    store.requestSnippetsDialog(activeProject.id),
+                  )}
+                  className="palette__item"
+                >
+                  Manage snippets for {activeProject.name}…
+                </Command.Item>
+              )}
+              {projects.flatMap((p) =>
                   (p.snippets ?? []).map((s) => (
                     <Command.Item
                       key={`snippet-${p.id}-${s.id}`}
@@ -220,8 +230,7 @@ export function CommandPalette({
                     </Command.Item>
                   )),
                 )}
-              </Command.Group>
-            )}
+            </Command.Group>
 
             <Command.Group heading="Groups" className="palette__group">
               <Command.Item

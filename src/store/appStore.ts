@@ -57,6 +57,12 @@ export type Snippet = {
   id: string;
   name: string;
   command: string;
+  /**
+   * When true (or undefined, for back-compat), inserting the snippet also
+   * sends Enter so the command runs immediately. When false, the command text
+   * is pasted at the prompt without executing, so the user can edit it first.
+   */
+  runAfterPaste?: boolean;
 };
 
 export type Project = {
@@ -179,6 +185,8 @@ type AppState = {
   renamingProjectId: string | null;
   /** When non-null, the GroupHeader should put this group into inline-rename mode. */
   renamingGroupId: string | null;
+  /** When non-null, the ProjectList should open the snippets dialog for this project. */
+  snippetsDialogProjectId: string | null;
   /** When non-null, App renders the close-tab confirmation dialog for this
    * tab (set only for split tabs when confirmCloseSplitTab is on). */
   pendingCloseTabId: string | null;
@@ -245,6 +253,7 @@ type AppState = {
   requestTabRename: (tabId: string | null) => void;
   requestProjectRename: (projectId: string | null) => void;
   requestGroupRename: (groupId: string | null) => void;
+  requestSnippetsDialog: (projectId: string | null) => void;
   setSearchingTerminal: (terminalId: string | null) => void;
   consumeRestoredBuffer: (terminalId: string) => string | null;
   setUpdateInfo: (info: AppState["updateInfo"]) => void;
@@ -556,6 +565,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   renamingTabId: null,
   renamingProjectId: null,
   renamingGroupId: null,
+  snippetsDialogProjectId: null,
   pendingCloseTabId: null,
   pendingCullTabIds: null,
   pendingQuit: false,
@@ -633,6 +643,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
   requestTabRename: (tabId) => set({ renamingTabId: tabId }),
   requestProjectRename: (projectId) => set({ renamingProjectId: projectId }),
+  requestSnippetsDialog: (projectId) =>
+    set({ snippetsDialogProjectId: projectId }),
   requestGroupRename: (groupId) => set({ renamingGroupId: groupId }),
   setSearchingTerminal: (terminalId) =>
     set({ searchingTerminalId: terminalId }),
@@ -1339,12 +1351,13 @@ export const useAppStore = create<AppState>()((set, get) => ({
       targetLeaf = tab?.focusedLeafId ?? null;
     }
     if (!targetLeaf) return;
-    await invoke("write_to_pty", {
-      id: targetLeaf,
-      data: snippet.command.endsWith("\n")
+    const runAfter = snippet.runAfterPaste !== false;
+    const data = runAfter
+      ? snippet.command.endsWith("\n")
         ? snippet.command
-        : `${snippet.command}\r`,
-    });
+        : `${snippet.command}\r`
+      : snippet.command;
+    await invoke("write_to_pty", { id: targetLeaf, data });
   },
 
   addGroup: async (name) => {

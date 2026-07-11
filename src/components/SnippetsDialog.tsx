@@ -38,7 +38,10 @@ export function SnippetsDialog({ projectId, onClose }: SnippetsDialogProps) {
   }
 
   function addSnippet() {
-    commit([...drafts, { id: uuid(), name: "", command: "" }]);
+    commit([
+      ...drafts,
+      { id: uuid(), name: "", command: "", runAfterPaste: true },
+    ]);
   }
   function updateSnippet(id: string, patch: Partial<Snippet>) {
     commit(drafts.map((s) => (s.id === id ? { ...s, ...patch } : s)));
@@ -78,6 +81,19 @@ export function SnippetsDialog({ projectId, onClose }: SnippetsDialogProps) {
                   updateSnippet(s.id, { command: e.target.value })
                 }
               />
+              <label
+                className="snippets__toggle"
+                title="Send Enter after inserting, so the command runs immediately"
+              >
+                <input
+                  type="checkbox"
+                  checked={s.runAfterPaste !== false}
+                  onChange={(e) =>
+                    updateSnippet(s.id, { runAfterPaste: e.target.checked })
+                  }
+                />
+                Run
+              </label>
               <button
                 type="button"
                 className="snippets__run"

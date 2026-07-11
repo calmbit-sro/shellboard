@@ -10,6 +10,12 @@ export type MenuItem =
       kbd?: string;
       separator?: false;
     }
+  | {
+      label: string;
+      submenu: MenuItem[];
+      disabled?: boolean;
+      separator?: false;
+    }
   | { separator: true };
 
 type ContextMenuProps = {
@@ -62,10 +68,30 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
       role="menu"
       onContextMenu={(e) => e.preventDefault()}
     >
-      {items.map((item, i) =>
-        "separator" in item && item.separator ? (
-          <div key={i} className="context-menu__separator" role="separator" />
-        ) : (
+      <MenuItems items={items} onClose={onClose} />
+    </div>
+  );
+}
+
+function MenuItems({
+  items,
+  onClose,
+}: {
+  items: MenuItem[];
+  onClose: () => void;
+}) {
+  return (
+    <>
+      {items.map((item, i) => {
+        if ("separator" in item && item.separator) {
+          return (
+            <div key={i} className="context-menu__separator" role="separator" />
+          );
+        }
+        if ("submenu" in item) {
+          return <SubMenuItem key={i} item={item} onClose={onClose} />;
+        }
+        return (
           <button
             key={i}
             type="button"
@@ -81,11 +107,61 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
             }}
           >
             <span className="context-menu__label">{item.label}</span>
-            {item.kbd && (
-              <span className="context-menu__kbd">{item.kbd}</span>
-            )}
+            {item.kbd && <span className="context-menu__kbd">{item.kbd}</span>}
           </button>
-        ),
+        );
+      })}
+    </>
+  );
+}
+
+function SubMenuItem({
+  item,
+  onClose,
+}: {
+  item: Extract<MenuItem, { submenu: MenuItem[] }>;
+  onClose: () => void;
+}) {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [flipLeft, setFlipLeft] = useState(false);
+
+  // Decide flyout side on hover: the parent menu is clamped to the viewport,
+  // so a right-opening submenu near the right edge would overflow — open it
+  // leftward instead.
+  function onEnter() {
+    const el = wrapRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const NESTED_WIDTH = 210;
+    setFlipLeft(rect.right + NESTED_WIDTH > window.innerWidth);
+  }
+
+  return (
+    <div
+      ref={wrapRef}
+      className="context-menu__sub-wrap"
+      onMouseEnter={onEnter}
+    >
+      <button
+        type="button"
+        role="menuitem"
+        aria-haspopup="menu"
+        className="context-menu__item context-menu__item--parent"
+        disabled={item.disabled}
+      >
+        <span className="context-menu__label">{item.label}</span>
+        <span className="context-menu__arrow">›</span>
+      </button>
+      {!item.disabled && (
+        <div
+          className={`context-menu context-menu--nested ${
+            flipLeft ? "context-menu--nested-left" : ""
+          }`}
+          role="menu"
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <MenuItems items={item.submenu} onClose={onClose} />
+        </div>
       )}
     </div>
   );

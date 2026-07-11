@@ -30,6 +30,11 @@ export function MosaicTab({ tabId, isActiveTab }: MosaicTabProps) {
   const focusPanel = useAppStore((s) => s.focusPanel);
   const splitPanel = useAppStore((s) => s.splitPanel);
   const closeActivePanel = useAppStore((s) => s.closeActivePanel);
+  const project = useAppStore((s) =>
+    s.projects.find((p) => p.id === tab?.projectId),
+  );
+  const runSnippet = useAppStore((s) => s.runSnippet);
+  const requestSnippetsDialog = useAppStore((s) => s.requestSnippetsDialog);
 
   const [ctx, setCtx] = useState<CtxState | null>(null);
 
@@ -106,6 +111,26 @@ export function MosaicTab({ tabId, isActiveTab }: MosaicTabProps) {
               })
               .catch(() => {});
           },
+        },
+        { separator: true } as const,
+        {
+          label: "Snippets",
+          submenu: [
+            ...(project?.snippets ?? []).map((s) => ({
+              label: s.name || s.command || "(empty)",
+              disabled: !s.command.trim(),
+              onClick: () => void runSnippet(project!.id, s.id),
+            })),
+            ...((project?.snippets?.length ?? 0) > 0
+              ? [{ separator: true } as const]
+              : []),
+            {
+              label: "Manage snippets…",
+              onClick: () => {
+                if (project) requestSnippetsDialog(project.id);
+              },
+            },
+          ],
         },
         { separator: true } as const,
         {

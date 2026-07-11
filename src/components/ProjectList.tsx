@@ -72,6 +72,10 @@ export function ProjectList({ onAddProject, search = "" }: ProjectListProps) {
   const requestProjectRename = useAppStore((s) => s.requestProjectRename);
   const externalRenamingGroupId = useAppStore((s) => s.renamingGroupId);
   const requestGroupRename = useAppStore((s) => s.requestGroupRename);
+  const externalSnippetsProjectId = useAppStore(
+    (s) => s.snippetsDialogProjectId,
+  );
+  const requestSnippetsDialog = useAppStore((s) => s.requestSnippetsDialog);
 
   const [ctx, setCtx] = useState<CtxState | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -104,6 +108,13 @@ export function ProjectList({ onAddProject, search = "" }: ProjectListProps) {
       requestGroupRename(null);
     }
   }, [externalRenamingGroupId, requestGroupRename]);
+
+  useEffect(() => {
+    if (externalSnippetsProjectId) {
+      setSnippetsProjectId(externalSnippetsProjectId);
+      requestSnippetsDialog(null);
+    }
+  }, [externalSnippetsProjectId, requestSnippetsDialog]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),

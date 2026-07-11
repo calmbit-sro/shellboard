@@ -64,3 +64,38 @@
   margin: 4px 2px;
   background: var(--line-faint);
 }
+
+/* Submenu (flyout) */
+.context-menu__sub-wrap {
+  position: relative;
+}
+
+.context-menu__arrow {
+  color: var(--subtle);
+  font-size: 14px;
+  line-height: 1;
+  margin-left: 8px;
+}
+
+.context-menu--nested {
+  position: absolute;
+  top: -5px;
+  left: 100%;
+  margin-left: 2px;
+  display: none;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+/* Flip to the left when the flyout would overflow the right window edge. */
+.context-menu--nested-left {
+  left: auto;
+  right: 100%;
+  margin-left: 0;
+  margin-right: 2px;
+}
+
+.context-menu__sub-wrap:hover > .context-menu--nested,
+.context-menu__sub-wrap:focus-within > .context-menu--nested {
+  display: block;
+}
