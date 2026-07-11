@@ -146,6 +146,7 @@ mod tests {
         assert!(body.contains("133;C"));
         assert!(body.contains("133;D"));
         assert!(body.contains("_shellboard_cmd_ran"));
+        assert!(body.contains("POWERLEVEL9K_INSTANT_PROMPT=off"));
 
         let (args, _) = super::osc7_wiring("/bin/bash");
         assert_eq!(args[0], "--rcfile");
@@ -185,6 +186,12 @@ fn osc7_wiring(shell_path: &str) -> (Vec<String>, Vec<(String, String)>) {
         "zsh" => {
             let zshrc = tmp.join(".zshrc");
             let body = r#"# Shellboard shell integration (OSC 7 cwd + OSC 133 marks)
+# powerlevel10k's "instant prompt" paints a provisional prompt at startup
+# and repaints the screen ~1 s later when real init finishes — that repaint
+# yanks a restored scrollback out of view (session restore / reopen tab).
+# Disable the two-phase repaint for shells we spawn; the prompt simply
+# appears once init completes.
+export POWERLEVEL9K_INSTANT_PROMPT=off
 # ZDOTDIR redirects zsh away from $HOME for .z*-style config files, so
 # source user's files manually. /etc/zprofile + /etc/zshrc still run
 # automatically in login mode (PATH on macOS comes from there).
