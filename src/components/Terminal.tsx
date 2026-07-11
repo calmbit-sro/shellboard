@@ -193,12 +193,24 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
     // wrong or the cell metrics changed without a corresponding container
     // resize. ResizeObserver-driven resizes during a drag still go through
     // the debounced xterm.onResize path below to avoid SIGWINCH spam.
-    const fitAndSync = () => {
+    // fit() reflows the buffer, and after a reflow xterm can leave the
+    // viewport anchored above the end. A terminal that was scrolled to the
+    // bottom must stay at the bottom across resizes — without this, a
+    // restored tab (large replayed scrollback + several late fits while the
+    // layout settles) ends up parked at the top of its history.
+    const fitKeepingBottom = () => {
+      const buf = xterm.buffer.active;
+      const wasAtBottom = buf.viewportY >= buf.baseY;
       try {
         fit.fit();
       } catch {
         /* container may be hidden or not laid out yet */
       }
+      if (wasAtBottom) xterm.scrollToBottom();
+    };
+
+    const fitAndSync = () => {
+      fitKeepingBottom();
       void invoke("resize_pty", {
         id: terminalId,
         cols: xterm.cols,
@@ -257,8 +269,13 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
           let data = event.payload.data;
           if (filterStartupClears) {
             data = data.replace(STARTUP_CLEAR_RE, "");
+            // Startup sequences the filter doesn't cover can still yank the
+            // view off the restored content — keep the tail pinned for the
+            // duration of the grace window.
+            xterm.write(data, () => xterm.scrollToBottom());
+          } else {
+            xterm.write(data);
           }
-          xterm.write(data);
           // Flag the owning tab as having background activity if the user
           // isn't currently looking at it.
           useAppStore.getState().markTabActivity(terminalId);
@@ -331,11 +348,7 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
       if (fitRaf !== null) return;
       fitRaf = requestAnimationFrame(() => {
         fitRaf = null;
-        try {
-          fit.fit();
-        } catch {
-          /* ignore transient layout errors */
-        }
+        fitKeepingBottom();
       });
     });
     resizeObserver.observe(container);
