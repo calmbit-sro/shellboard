@@ -28,6 +28,7 @@ import {
   type PersistedTab,
 } from "../utils/sessionSerialize";
 import { flushAllWrites } from "../utils/terminalRegistry";
+import { notifyCommandFinished } from "../utils/notify";
 import { DEFAULT_THEME_ID, findTheme } from "../utils/themes";
 import { isValidBinding, type Binding } from "../shortcuts/binding";
 import { isKnownActionId } from "../shortcuts/registry";
@@ -120,6 +121,9 @@ export type Settings = {
   /** Hit GitHub Releases on startup to surface a newer version in the
    * status bar. Off = no network calls. */
   checkForUpdatesOnStartup: boolean;
+  /** OS notification when a command that ran ≥ 5 s finishes while its tab
+   * is inactive or the window is unfocused. Needs shell integration. */
+  notifyLongCommands: boolean;
   /** Snapshot xterm scrollback to buffers.json so session restore can
    * replay it. Off = nothing is written and existing buffers are cleared
    * on toggle; restored sessions come back with empty terminals. */
@@ -154,6 +158,7 @@ export const DEFAULT_SETTINGS: Settings = {
   shellPath: "",
   shellArgs: "",
   checkForUpdatesOnStartup: true,
+  notifyLongCommands: true,
   persistScrollback: true,
   showPanelHeader: true,
   showGroupCount: true,
@@ -449,6 +454,10 @@ function clampSettings(s: Partial<Settings>): Settings {
       typeof s.checkForUpdatesOnStartup === "boolean"
         ? s.checkForUpdatesOnStartup
         : DEFAULT_SETTINGS.checkForUpdatesOnStartup,
+    notifyLongCommands:
+      typeof s.notifyLongCommands === "boolean"
+        ? s.notifyLongCommands
+        : DEFAULT_SETTINGS.notifyLongCommands,
     persistScrollback:
       typeof s.persistScrollback === "boolean"
         ? s.persistScrollback
@@ -1694,6 +1703,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   handleCommandEnd: (terminalId, exitCode) => {
     const current = get().terminals[terminalId];
     if (!current) return;
+    const startedAt = current.commandStartedAt;
     set((state) => ({
       terminals: {
         ...state.terminals,
@@ -1720,6 +1730,29 @@ export const useAppStore = create<AppState>()((set, get) => ({
           ),
         }));
       }
+    }
+    // Long-command notification: only when we saw the C mark (so we know
+    // the runtime), the command ran long enough to be worth interrupting
+    // for, and the user wasn't watching (inactive tab or unfocused window).
+    const LONG_COMMAND_MS = 5_000;
+    const runtime = startedAt ? Date.now() - startedAt : 0;
+    const unwatched =
+      !tab || tab.id !== state.activeTabId || !document.hasFocus();
+    if (
+      runtime >= LONG_COMMAND_MS &&
+      unwatched &&
+      state.settings.notifyLongCommands
+    ) {
+      const project = tab
+        ? state.projects.find((p) => p.id === tab.projectId)
+        : undefined;
+      const where = [project?.name, tab?.title].filter(Boolean).join(" · ");
+      notifyCommandFinished(
+        exitCode === 0
+          ? "Command finished"
+          : `Command failed (exit ${exitCode})`,
+        where || "Terminal",
+      );
     }
   },
 

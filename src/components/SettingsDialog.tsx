@@ -275,6 +275,7 @@ function SectionPane({ id }: { id: SectionId }) {
           <PersistScrollbackField />
           <ShowPanelHeaderField />
           <TrackCwdField />
+          <NotifyLongCommandsField />
         </SectionHeader>
       );
     case "appearance":
@@ -804,6 +805,23 @@ function TrackCwdField({ section }: { section?: string } = {}) {
   );
 }
 
+function NotifyLongCommandsField({ section }: { section?: string } = {}) {
+  const { settings } = useSettings();
+  return (
+    <FieldRow
+      label="Notify when long commands finish"
+      align="top"
+      hint="OS notification when a command that ran ≥ 5 s finishes on an inactive tab or while the window is unfocused. Requires shell integration."
+      section={section}
+    >
+      <Toggle2
+        on={settings.notifyLongCommands}
+        onChange={(v) => set("notifyLongCommands", v)}
+      />
+    </FieldRow>
+  );
+}
+
 function ThemeField({ section }: { section?: string } = {}) {
   const { settings } = useSettings();
   const theme = findTheme(settings.terminalTheme).theme;
@@ -1112,6 +1130,14 @@ const SEARCH_INDEX: ReadonlyArray<SearchEntry> = [
     label: "Track current directory",
     keywords: "osc 7 cwd directory tracking shell hook zsh bash fish nushell",
     render: (s) => <TrackCwdField section={s} />,
+  },
+  {
+    id: "notify-long-commands",
+    section: "terminal",
+    sectionLabel: "Terminal",
+    label: "Notify when long commands finish",
+    keywords: "notification notify command finished exit osc 133 background",
+    render: (s) => <NotifyLongCommandsField section={s} />,
   },
   {
     id: "theme",

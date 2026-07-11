@@ -13,6 +13,7 @@
     "clipboard-manager:allow-read-text",
     "clipboard-manager:allow-write-text",
     "window-state:default",
+    "notification:default",
     {
       "identifier": "opener:allow-open-path",
       "allow": [
