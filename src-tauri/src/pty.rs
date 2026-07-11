@@ -130,13 +130,39 @@ mod tests {
         let bytes = b"x\x80";
         assert_eq!(utf8_safe_split(bytes), 2);
     }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn shell_integration_bodies_emit_osc133() {
+        // The init files are opaque strings — assert the load-bearing marks
+        // and guards are present so a refactor can't silently drop them.
+        let (_, envs) = super::osc7_wiring("/bin/zsh");
+        assert!(!envs.is_empty(), "zsh should wire ZDOTDIR");
+        let zshrc = std::env::temp_dir()
+            .join("shellboard-shell-init")
+            .join(".zshrc");
+        let body = std::fs::read_to_string(zshrc).unwrap();
+        assert!(body.contains("133;A"));
+        assert!(body.contains("133;C"));
+        assert!(body.contains("133;D"));
+        assert!(body.contains("_shellboard_cmd_ran"));
+
+        let (args, _) = super::osc7_wiring("/usr/bin/fish");
+        let joined = args.join(" ");
+        assert!(joined.contains("133;A") && joined.contains("133;D"));
+    }
 }
 
-/// When auto cwd tracking is on, write a shell-specific init file into the
+/// When shell integration is on, write a shell-specific init file into the
 /// OS temp dir and wire it into the spawned shell via the right flag:
-///   zsh  → ZDOTDIR  (custom .zshrc that sources user's then adds chpwd hook)
-///   bash → --rcfile (sources ~/.bashrc then appends PROMPT_COMMAND)
+///   zsh  → ZDOTDIR  (custom .zshrc that sources user's then adds hooks)
+///   bash → --rcfile (sources ~/.bashrc then appends PROMPT_COMMAND + traps)
 ///   fish → --init-command
+///
+/// The hooks emit OSC 7 (cwd tracking for session restore) and OSC 133
+/// prompt marks (A = prompt, C = command start, D;<code> = command end)
+/// that the frontend turns into prompt jumping, the failed-command dot and
+/// long-command notifications.
 ///
 /// Returns the list of extra args and any env var overrides the caller must
 /// apply on the CommandBuilder.
@@ -152,7 +178,7 @@ fn osc7_wiring(shell_path: &str) -> (Vec<String>, Vec<(String, String)>) {
     match base {
         "zsh" => {
             let zshrc = tmp.join(".zshrc");
-            let body = r#"# Shellboard OSC 7 tracking
+            let body = r#"# Shellboard shell integration (OSC 7 cwd + OSC 133 marks)
 # ZDOTDIR redirects zsh away from $HOME for .z*-style config files, so
 # source user's files manually. /etc/zprofile + /etc/zshrc still run
 # automatically in login mode (PATH on macOS comes from there).
@@ -163,6 +189,23 @@ _shellboard_osc7() { printf '\e]7;file://%s%s\e\\' "${HOST:-$HOSTNAME}" "$PWD" }
 typeset -ga chpwd_functions
 chpwd_functions+=(_shellboard_osc7)
 _shellboard_osc7
+# OSC 133: D;<exit> after a command (guarded so the first prompt gets no D),
+# A before each prompt, C when a command starts.
+_shellboard_osc133_precmd() {
+  local code=$?
+  if [ -n "${_shellboard_cmd_ran:-}" ]; then
+    printf '\e]133;D;%s\e\\' "$code"
+  fi
+  _shellboard_cmd_ran=""
+  printf '\e]133;A\e\\'
+}
+_shellboard_osc133_preexec() {
+  _shellboard_cmd_ran=1
+  printf '\e]133;C\e\\'
+}
+typeset -ga precmd_functions preexec_functions
+precmd_functions+=(_shellboard_osc133_precmd)
+preexec_functions+=(_shellboard_osc133_preexec)
 "#;
             if std::fs::write(&zshrc, body).is_err() {
                 return (Vec::new(), Vec::new());
@@ -174,7 +217,7 @@ _shellboard_osc7
         }
         "bash" => {
             let rc = tmp.join("shellboard.bashrc");
-            let body = r#"# Shellboard OSC 7 tracking
+            let body = r#"# Shellboard shell integration (OSC 7 cwd + OSC 133 marks)
 # --rcfile forces bash into non-login mode, so source the profile files
 # manually so PATH additions from ~/.bash_profile still apply.
 [ -f "/etc/profile" ] && source "/etc/profile"
@@ -189,6 +232,35 @@ case "$PROMPT_COMMAND" in
     *) PROMPT_COMMAND="_shellboard_osc7${PROMPT_COMMAND:+;$PROMPT_COMMAND}" ;;
 esac
 _shellboard_osc7
+# OSC 133 prompt marks. The prompt handler must run FIRST in PROMPT_COMMAND
+# so `$?` is still the user command's exit code — prepending it after the
+# OSC 7 prepend above puts it at the front.
+_shellboard_osc133_prompt() {
+  local code=$?
+  if [ -n "${_shellboard_cmd_ran:-}" ]; then
+    printf '\e]133;D;%s\e\\' "$code"
+  fi
+  _shellboard_cmd_ran=""
+  printf '\e]133;A\e\\'
+}
+case "$PROMPT_COMMAND" in
+    *_shellboard_osc133_prompt*) ;;
+    *) PROMPT_COMMAND="_shellboard_osc133_prompt${PROMPT_COMMAND:+;$PROMPT_COMMAND}" ;;
+esac
+# C (command start) via DEBUG trap — best-effort: installed only when the
+# user has no DEBUG trap of their own. Skips commands that are part of
+# PROMPT_COMMAND itself.
+_shellboard_osc133_preexec() {
+  [ -n "${_shellboard_cmd_ran:-}" ] && return 0
+  case ";$PROMPT_COMMAND;" in
+    *";$BASH_COMMAND;"*) return 0 ;;
+  esac
+  _shellboard_cmd_ran=1
+  printf '\e]133;C\e\\'
+}
+if [ -z "$(trap -p DEBUG)" ]; then
+  trap '_shellboard_osc133_preexec' DEBUG
+fi
 "#;
             if std::fs::write(&rc, body).is_err() {
                 return (Vec::new(), Vec::new());
@@ -199,10 +271,18 @@ _shellboard_osc7
             )
         }
         "fish" => {
-            // Fish: one-liner via --init-command.
-            let cmd = "function _shellboard_osc7 --on-variable PWD; printf '\\e]7;file://%s%s\\e\\\\' $hostname $PWD; end; _shellboard_osc7";
+            // Fish: OSC 7 + OSC 133 via --init-command (repeatable flag).
+            // fish_postexec fires only after a real command, so D needs no
+            // first-prompt guard.
+            let osc7 = "function _shellboard_osc7 --on-variable PWD; printf '\\e]7;file://%s%s\\e\\\\' $hostname $PWD; end; _shellboard_osc7";
+            let osc133 = "function _shellboard_osc133_prompt --on-event fish_prompt; printf '\\e]133;A\\e\\\\'; end; function _shellboard_osc133_preexec --on-event fish_preexec; printf '\\e]133;C\\e\\\\'; end; function _shellboard_osc133_postexec --on-event fish_postexec; printf '\\e]133;D;%s\\e\\\\' $status; end";
             (
-                vec!["--init-command".into(), cmd.into()],
+                vec![
+                    "--init-command".into(),
+                    osc7.into(),
+                    "--init-command".into(),
+                    osc133.into(),
+                ],
                 Vec::new(),
             )
         }
@@ -231,6 +311,19 @@ $env.config.hooks.env_change.PWD = [
         print -n $"(char esc)]7;file://($host)($after)(char esc)\\"
     }
 ]
+
+# OSC 133 marks — same best-effort caveat as above (syntax targets 0.90+).
+$env.config.hooks.pre_prompt = ($env.config.hooks.pre_prompt? | default []) ++ [{||
+    if ($env.SHELLBOARD_CMD_RAN? | default "") == "1" {
+        print -n $"(char esc)]133;D;($env.LAST_EXIT_CODE)(char esc)\\"
+    }
+    $env.SHELLBOARD_CMD_RAN = "0"
+    print -n $"(char esc)]133;A(char esc)\\"
+}]
+$env.config.hooks.pre_execution = ($env.config.hooks.pre_execution? | default []) ++ [{||
+    $env.SHELLBOARD_CMD_RAN = "1"
+    print -n $"(char esc)]133;C(char esc)\\"
+}]
 "#;
             if std::fs::write(&env_file, body).is_err() {
                 return (Vec::new(), Vec::new());
