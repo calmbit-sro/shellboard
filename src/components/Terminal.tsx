@@ -94,6 +94,12 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
     const saved = useAppStore.getState().consumeRestoredBuffer(terminalId);
     if (saved) {
       try {
+        // Trailing \r\n: the restored content ends mid-line (the old
+        // prompt), and a fresh shell drawing its first prompt there would
+        // emit zsh's partial-line marker (a standout `%`) — or, in bash,
+        // glue the new prompt onto the old one. Starting the shell on a
+        // fresh column-1 line avoids both.
+        //
         // Trailing DECSC (\e7): the shell's own save-cursor often lands in
         // the PTY stream before our data listener attaches and is lost, so
         // the first prompt paint's unpaired DECRC (\e8) would restore the
@@ -107,7 +113,7 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
         // viewport anchored above the end. Pin it back to the bottom so the
         // prompt lands where the user left it (and subsequent PTY writes
         // keep auto-scrolling).
-        xterm.write(saved + "\x1b7", () => safeScrollToBottom());
+        xterm.write(saved + "\r\n\x1b7", () => safeScrollToBottom());
       } catch {
         /* ignore malformed saved data */
       }
