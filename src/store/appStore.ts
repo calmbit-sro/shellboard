@@ -910,7 +910,6 @@ export const useAppStore = create<AppState>()((set, get) => ({
     }
 
     const leaves = tab.mosaic ? collectLeaves(tab.mosaic) : [];
-    await Promise.all(leaves.map((id) => killTerminal(id)));
 
     const remaining = tabs.filter((t) => t.id !== tabId);
     const remainingTerminals = { ...terminals };
@@ -948,12 +947,19 @@ export const useAppStore = create<AppState>()((set, get) => ({
       }
     }
 
+    // Remove the tab from state BEFORE killing its PTYs. The kills emit
+    // pty exit events, and handleTerminalExit reacting to a half-closed
+    // tab used to shrink its mosaic and re-enter closeTab — the reopen
+    // stack then captured the same tab a second time as a single panel.
+    // With the tab already gone, those exit events find nothing to do.
     set({
       tabs: remaining,
       activeTabId: nextActive,
       terminals: remainingTerminals,
       lastActiveTabByProject: nextLastActive,
     });
+
+    await Promise.all(leaves.map((id) => killTerminal(id)));
 
     // Two cases when the project just lost its last tab:
     //   - autoCwdName ("quick-add") projects are ephemeral — when the
