@@ -5,6 +5,64 @@ All notable changes to Shellboard will be documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] — 2026-07-18
+
+Shellboard now understands your shell prompt. Shell integration tracks
+where each command starts and ends, which powers prompt-to-prompt
+navigation, a failed-command indicator and finished-command
+notifications. Closed tabs can be reopened with their content, and a
+code audit brought a batch of stability and security fixes. Settings and
+sessions carry over untouched — nothing to do on upgrade.
+
+### Added
+
+- **Shell integration.** The shells Shellboard spawns (zsh, bash, fish)
+  now report prompt and command boundaries. The former "cwd tracking"
+  switch in Settings has been renamed **Shell integration** and covers
+  both features; existing installs keep their choice. Not available on
+  Windows.
+- **Jump between prompts.** Cmd+↑ / Cmd+↓ (Ctrl on Linux) scroll the
+  terminal straight to the previous or next prompt.
+- **Failed-command dot.** A tab shows a red activity dot when a command
+  running in it fails while you're looking elsewhere.
+- **Finished-command notifications.** A command that runs at least 5
+  seconds in a background terminal triggers an OS notification when it
+  finishes, so you can switch away from long builds without babysitting
+  them.
+- **Reopen closed tab.** Cmd+Shift+T (Ctrl on Linux/Windows) brings back
+  the last closed tab — split layout, working directories and scrollback
+  included. The stack keeps the last 10 closed tabs for the current
+  session.
+- **Snippets in the context menu.** Right-click a tab to run or manage
+  the project's snippets, and manage them from the command palette too.
+
+### Changed
+
+- **Duplicate tab** now replicates the full split layout instead of just
+  a single pane.
+
+### Fixed
+
+- **Session restore reliability.** Restored scrollback no longer gets
+  wiped by shell startup (seen with powerlevel10k), the view stays
+  pinned to the bottom while a session restores, and the fresh prompt
+  starts on its own line instead of gluing to old output.
+- **Exited shells are reaped properly.** Long-lived sessions no longer
+  accumulate zombie processes toward the macOS process limit.
+- **Faster handling of heavy output.** Terminal output is batched before
+  crossing into the UI, cutting overhead for commands that print a lot.
+- **Dialogs behave.** Keyboard shortcuts and menu accelerators no longer
+  fire behind open dialogs, dialogs trap focus and can be navigated with
+  the keyboard, and global search no longer lags while typing.
+- Closing a tab no longer leaves a broken duplicate on the reopen stack.
+- Session saves are cheaper and can no longer be torn by a mid-write
+  quit.
+
+### Security
+
+- **Content Security Policy** is now enforced in the app window, and the
+  scope for opening external links/paths has been narrowed.
+
 ## [2.3.0] — 2026-07-04
 
 Shellboard now runs on Windows. The macOS and Linux builds are unchanged

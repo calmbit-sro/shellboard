@@ -24,3 +24,7 @@ dist-ssr
 *.sw?
 
 .vscode
+
+# Design handoff inputs (kept locally, not part of the app)
+handoff/
+handoff-settings/
