@@ -21,6 +21,7 @@ import {
 } from "../utils/terminalRegistry";
 import { markTerminalBufferDirty } from "../utils/sessionSerialize";
 import { addPromptMark, clearPromptMarks } from "../utils/promptMarks";
+import { isActivatingClick } from "../utils/windowActivation";
 
 const IS_MAC =
   typeof navigator !== "undefined" &&
@@ -193,6 +194,25 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
         .catch(() => {});
     };
     container.addEventListener("mousedown", onMouseDown);
+
+    // Swallow the mouse report for the click that brings the window to the
+    // foreground. With acceptFirstMouse on, that activating click reaches
+    // xterm and gets forwarded to a mouse-tracking TUI (e.g. an interactive
+    // prompt), so switching back from another window would accidentally pick
+    // an option. Capture-phase + stopImmediatePropagation stops it before
+    // xterm's own listeners see it; we still focus the pane so typing lands
+    // here. Only the left button, and only the activating click — every later
+    // click passes through to xterm normally.
+    const onMouseDownCapture = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      if (!isActivatingClick()) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      xterm.focus();
+    };
+    container.addEventListener("mousedown", onMouseDownCapture, {
+      capture: true,
+    });
 
     // Copy/paste convention:
     //   macOS:    Cmd+C (smart — copy if selection, else no-op), Cmd+V paste
@@ -401,6 +421,9 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
       if (gracePin) clearInterval(gracePin);
       container.removeEventListener("mouseup", onMouseUp);
       container.removeEventListener("mousedown", onMouseDown);
+      container.removeEventListener("mousedown", onMouseDownCapture, {
+        capture: true,
+      });
       for (const d of disposables) d.dispose();
       for (const off of unlisteners) off();
       unregisterTerminal(terminalId);
