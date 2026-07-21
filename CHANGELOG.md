@@ -5,6 +5,26 @@ All notable changes to Shellboard will be documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.1] — 2026-07-21
+
+Two macOS fixes for clicking into split terminals from another window.
+Clicking a pane while Shellboard is in the background now lands on the
+first click, and the click you use to switch back can no longer trip a
+program running in the terminal. Nothing to do on upgrade.
+
+### Fixed
+
+- **Single-click focus from another app (macOS).** Clicking a terminal
+  pane while Shellboard was in the background used to focus the
+  previously-active pane, so you had to click a second time to land where
+  you wanted. The activating click now focuses the pane you actually
+  clicked.
+- **Switching back no longer picks an option (macOS).** The click you use
+  to bring Shellboard forward from another window is no longer forwarded
+  to a mouse-aware program running in the terminal (an interactive
+  prompt, `fzf`, `vim`…), so it can't accidentally select an option — it
+  just focuses the pane. The next click behaves normally.
+
 ## [2.4.0] — 2026-07-18
 
 Shellboard now understands your shell prompt. Shell integration tracks
