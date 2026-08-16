@@ -1,6 +1,6 @@
 import { getVersion } from "@tauri-apps/api/app";
 
-const REPO = "ok2cqr/shellboard";
+const REPO = "calmbit-sro/shellboard";
 const API = `https://api.github.com/repos/${REPO}/releases/latest`;
 const CACHE_KEY = "shellboard.updateCheck";
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
