@@ -7,7 +7,7 @@ A per-project tab & split workspace with session restore, themes, a command pale
 See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 
 
-![Shellboard sidebar with project groups, splits, and the command palette open](docs/screenshots/main.png)
+![Shellboard sidebar with project groups and three terminal splits — a running dev server, a directory listing, and git status](docs/screenshots/main.png)
 
 ## Features
 
