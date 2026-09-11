@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
+import { writeText as writeClipboard } from "@tauri-apps/plugin-clipboard-manager";
 import type { MosaicDirection, MosaicNode } from "react-mosaic-component";
 import {
   collectLeaves,
@@ -119,6 +120,17 @@ export type AddTabOptions = {
   cwd?: string;
 };
 
+/** Whether programs running in a terminal may write to the system clipboard
+ * via OSC 52. `ask` = prompt on first use each launch. Reading the clipboard
+ * is never allowed regardless of this value. */
+export type ClipboardAccessMode = "ask" | "allow" | "deny";
+
+const CLIPBOARD_ACCESS_MODES: readonly ClipboardAccessMode[] = [
+  "ask",
+  "allow",
+  "deny",
+];
+
 export type Settings = {
   terminalFontFamily: string;
   terminalFontSize: number;
@@ -153,6 +165,10 @@ export type Settings = {
   /** Pop a confirmation dialog before the app quits (Cmd+Q or closing the
    * window). Off = quit immediately. */
   confirmBeforeQuitting: boolean;
+  /** Let programs in the terminal (tmux, neovim, lazygit…) copy text to the
+   * clipboard with OSC 52. `ask` prompts on first use each launch and flips
+   * to `allow` when accepted; `deny` silently drops the writes. */
+  terminalClipboardAccess: ClipboardAccessMode;
   /** User keyboard-shortcut overrides, keyed by action id (see
    * src/shortcuts/registry.ts). Only overrides are stored; any id absent here
    * falls back to its default binding. Unknown ids are dropped on load. */
@@ -176,6 +192,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showGroupCount: true,
   confirmCloseSplitTab: true,
   confirmBeforeQuitting: true,
+  terminalClipboardAccess: "ask",
   keybindings: {},
 };
 
@@ -223,6 +240,12 @@ type AppState = {
   /** When true, App renders the "Quit Shellboard?" confirmation (set only when
    * confirmBeforeQuitting is on). Session-only. */
   pendingQuit: boolean;
+  /** When non-null, App renders the "Allow clipboard access?" prompt; this is
+   * the OSC 52 text waiting on the answer (latest request wins). Session-only. */
+  pendingClipboardWrite: string | null;
+  /** Set after "Not now" so a program spamming OSC 52 (tmux copies on every
+   * mouse selection) doesn't re-prompt until the next launch. Session-only. */
+  clipboardPromptDismissed: boolean;
   /** When non-null, the matching Terminal should show its search overlay. */
   searchingTerminalId: string | null;
   /** Scrollback snapshots keyed by the new terminal id after session
@@ -314,6 +337,15 @@ type AppState = {
   /** Stage / dismiss the quit confirmation dialog. */
   setPendingQuit: (v: boolean) => void;
   cancelQuit: () => void;
+  /** OSC 52 write from a terminal program. Honors
+   * settings.terminalClipboardAccess: writes immediately, drops silently, or
+   * stages the "Allow clipboard access?" prompt. */
+  requestTerminalClipboardWrite: (text: string) => void;
+  /** Resolve the clipboard prompt: persist "allow" and write the staged text. */
+  allowClipboardAccess: () => void;
+  /** Dismiss the clipboard prompt: drop the staged text and stay quiet for the
+   * rest of this launch. */
+  dismissClipboardPrompt: () => void;
   /** Stage a "close idle terminals" confirmation for the given tabs. No-op when
    * the list is empty (after filtering to tabs that still exist). */
   requestCull: (tabIds: string[]) => void;
@@ -495,6 +527,11 @@ function clampSettings(s: Partial<Settings>): Settings {
       typeof s.confirmBeforeQuitting === "boolean"
         ? s.confirmBeforeQuitting
         : DEFAULT_SETTINGS.confirmBeforeQuitting,
+    terminalClipboardAccess: CLIPBOARD_ACCESS_MODES.includes(
+      s.terminalClipboardAccess as ClipboardAccessMode,
+    )
+      ? (s.terminalClipboardAccess as ClipboardAccessMode)
+      : DEFAULT_SETTINGS.terminalClipboardAccess,
     keybindings: clampKeybindings(s.keybindings),
   };
 }
@@ -680,6 +717,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
   pendingCloseTabId: null,
   pendingCullTabIds: null,
   pendingQuit: false,
+  pendingClipboardWrite: null,
+  clipboardPromptDismissed: false,
   searchingTerminalId: null,
   restoredBuffers: {},
   closedTabs: [],
@@ -862,6 +901,30 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
   setPendingQuit: (v) => set({ pendingQuit: v }),
   cancelQuit: () => set({ pendingQuit: false }),
+
+  requestTerminalClipboardWrite: (text) => {
+    const mode = get().settings.terminalClipboardAccess;
+    if (mode === "allow") {
+      writeClipboard(text).catch(() => {
+        /* clipboard unavailable — nothing sensible to do */
+      });
+    } else if (mode === "ask" && !get().clipboardPromptDismissed) {
+      set({ pendingClipboardWrite: text });
+    }
+    // "deny" (and "ask" after "Not now") drops the write silently.
+  },
+  allowClipboardAccess: () => {
+    const text = get().pendingClipboardWrite;
+    set({ pendingClipboardWrite: null });
+    void get().updateSettings({ terminalClipboardAccess: "allow" });
+    if (text !== null) {
+      writeClipboard(text).catch(() => {
+        /* clipboard unavailable */
+      });
+    }
+  },
+  dismissClipboardPrompt: () =>
+    set({ pendingClipboardWrite: null, clipboardPromptDismissed: true }),
 
   requestCull: (tabIds) => {
     const ids = tabIds.filter((id) => get().tabs.some((t) => t.id === id));

@@ -5,6 +5,17 @@ All notable changes to Shellboard will be documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Clipboard access for terminal programs (OSC 52).** tmux (`set-clipboard
+  on`), neovim, lazygit and other TUIs can now copy text to the system
+  clipboard. The first time a program tries, Shellboard asks "Allow clipboard
+  access?" — Allow is remembered, Not now keeps quiet until the next launch.
+  Change it any time in Settings → Terminal → Clipboard access for programs.
+  Reading the clipboard via OSC 52 is deliberately not supported.
+
 ## [2.4.1] — 2026-07-21
 
 Two macOS fixes for clicking into split terminals from another window.

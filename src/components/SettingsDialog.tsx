@@ -11,6 +11,7 @@ import {
   DEFAULT_SETTINGS,
   SETTINGS_LIMITS,
   useAppStore,
+  type ClipboardAccessMode,
   type Settings,
 } from "../store/appStore";
 import { findTheme, THEMES } from "../utils/themes";
@@ -276,6 +277,7 @@ function SectionPane({ id }: { id: SectionId }) {
           <ShowPanelHeaderField />
           <TrackCwdField />
           <NotifyLongCommandsField />
+          <ClipboardAccessField />
         </SectionHeader>
       );
     case "appearance":
@@ -805,6 +807,36 @@ function TrackCwdField({ section }: { section?: string } = {}) {
   );
 }
 
+const CLIPBOARD_ACCESS_OPTIONS: ReadonlyArray<{
+  value: ClipboardAccessMode;
+  label: string;
+}> = [
+  { value: "ask", label: "Ask each launch" },
+  { value: "allow", label: "Always allow" },
+  { value: "deny", label: "Never" },
+];
+
+function ClipboardAccessField({ section }: { section?: string } = {}) {
+  const { settings } = useSettings();
+  return (
+    <FieldRow
+      label="Clipboard access for programs"
+      align="top"
+      hint="Lets programs in the terminal (tmux, neovim, lazygit…) copy text to the clipboard via OSC 52. “Ask” prompts the first time a program tries and remembers Allow. Reading the clipboard is never allowed."
+      section={section}
+    >
+      <SelectInput
+        value={settings.terminalClipboardAccess}
+        options={CLIPBOARD_ACCESS_OPTIONS}
+        width={160}
+        onChange={(v) =>
+          set("terminalClipboardAccess", v as ClipboardAccessMode)
+        }
+      />
+    </FieldRow>
+  );
+}
+
 function NotifyLongCommandsField({ section }: { section?: string } = {}) {
   const { settings } = useSettings();
   return (
@@ -1131,6 +1163,14 @@ const SEARCH_INDEX: ReadonlyArray<SearchEntry> = [
     keywords:
       "osc 7 133 cwd directory tracking shell integration hook zsh bash fish nushell prompt marks",
     render: (s) => <TrackCwdField section={s} />,
+  },
+  {
+    id: "clipboard-access",
+    section: "terminal",
+    sectionLabel: "Terminal",
+    label: "Clipboard access for programs",
+    keywords: "clipboard osc 52 copy tmux neovim lazygit allow deny ask",
+    render: (s) => <ClipboardAccessField section={s} />,
   },
   {
     id: "notify-long-commands",

@@ -22,7 +22,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 - **Terminal search** (`Cmd/Ctrl+F`) — inline search bar above the focused terminal, including scrollback.
 - **Global search** (`Cmd/Ctrl+Shift+F`) — fuzzy-searches the buffer of every mounted terminal; result click jumps to the tab and scrolls to the match.
 - **Clickable URLs** — Cmd/Ctrl-click opens in the system browser.
-- **Clipboard polish** — copy-on-select to system clipboard, instant paste (via Tauri clipboard plugin, no permission prompt).
+- **Clipboard polish** — copy-on-select to system clipboard, instant paste (via Tauri clipboard plugin, no permission prompt). Programs in the terminal (tmux, neovim, lazygit…) can copy to the clipboard via OSC 52 — Shellboard asks the first time, and the choice lives in Settings → Terminal.
 - **Status bar** — shell · cwd (abbreviated with `~`) · live git status (branch, staged / modified / untracked / conflicts, ahead / behind upstream) · app version.
 - **Activity badge** — tabs with background output show a colored dot until opened.
 - **Command palette** (`Cmd/Ctrl+Shift+P`) — fuzzy-searchable: switch projects, new / close / rename tab, split, change theme, toggle sidebar, open settings, about, global search.

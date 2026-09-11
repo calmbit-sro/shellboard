@@ -99,6 +99,9 @@ function App() {
   const cancelCull = useAppStore((s) => s.cancelCull);
   const pendingQuit = useAppStore((s) => s.pendingQuit);
   const cancelQuit = useAppStore((s) => s.cancelQuit);
+  const pendingClipboardWrite = useAppStore((s) => s.pendingClipboardWrite);
+  const allowClipboardAccess = useAppStore((s) => s.allowClipboardAccess);
+  const dismissClipboardPrompt = useAppStore((s) => s.dismissClipboardPrompt);
   const initRan = useRef(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -129,7 +132,8 @@ function App() {
     // while one is up must not close the tab behind it.
     pendingCloseTabId !== null ||
     (!!pendingCullTabIds && pendingCullTabIds.length > 0) ||
-    pendingQuit;
+    pendingQuit ||
+    pendingClipboardWrite !== null;
 
   // Modal-open callbacks shared by the keyboard dispatcher and the native-menu
   // listener. useState setters are referentially stable, so an empty-deps memo
@@ -558,6 +562,15 @@ function App() {
         destructive
         onConfirm={() => void performQuit()}
         onCancel={cancelQuit}
+      />
+      <ConfirmDialog
+        open={pendingClipboardWrite !== null}
+        title="Allow clipboard access?"
+        message="A program running in this terminal wants to copy text to your clipboard. Allow programs in Shellboard terminals to write to the clipboard? You can change this later in Settings → Terminal."
+        confirmLabel="Allow"
+        cancelLabel="Not now"
+        onConfirm={allowClipboardAccess}
+        onCancel={dismissClipboardPrompt}
       />
       <RecentSwitcher />
       <ErrorToast />

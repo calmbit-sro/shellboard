@@ -22,6 +22,7 @@ import {
 import { markTerminalBufferDirty } from "../utils/sessionSerialize";
 import { addPromptMark, clearPromptMarks } from "../utils/promptMarks";
 import { isActivatingClick } from "../utils/windowActivation";
+import { decodeOsc52 } from "../utils/osc52";
 
 const IS_MAC =
   typeof navigator !== "undefined" &&
@@ -317,6 +318,21 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
           useAppStore
             .getState()
             .handleCommandEnd(terminalId, Number.isFinite(code) ? code : 0);
+        }
+        return true;
+      }),
+    );
+
+    // OSC 52 lets TUIs (tmux set-clipboard, neovim, lazygit, …) put text on
+    // the system clipboard: ESC ] 52 ; c ; <base64> BEL. Gated by the
+    // terminalClipboardAccess setting (ask on first use) in the store.
+    // Write-only — the "?" read query is deliberately ignored so a program
+    // can't read the clipboard. Nothing may throw here (xterm write queue).
+    disposables.push(
+      xterm.parser.registerOscHandler(52, (data) => {
+        const text = decodeOsc52(data);
+        if (text !== null) {
+          useAppStore.getState().requestTerminalClipboardWrite(text);
         }
         return true;
       }),
