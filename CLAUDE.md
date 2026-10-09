@@ -16,7 +16,7 @@ npm run release:linux    # cross-build .deb/.rpm from macOS via Docker (scripts/
 
 There is no test runner and no linter configured — `tsc` (run as part of `npm run build`) is the only static check. Don't add `npm test` or eslint commands without the user asking.
 
-Releases ship via tagged `v*` push triggering `.github/workflows/release.yml` (matrix: macOS arm64/x64 + Linux). The version lives in three files that must stay in sync: `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`.
+Releases ship via tagged `v*` push triggering `.github/workflows/release.yml` (matrix: macOS Apple Silicon + Linux + Windows). It creates a **draft** release with notes taken from the matching `CHANGELOG.md` section; publish it manually (`gh release edit vX.Y.Z --draft=false`) once the builds are green. The version lives in three files that must stay in sync: `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`.
 
 ## Architecture
 
