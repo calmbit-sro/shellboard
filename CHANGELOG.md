@@ -7,14 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] — 2026-10-09
+
+Programs in the terminal can now work with the clipboard in both
+directions: TUIs can copy text out via OSC 52, and pasting a screenshot
+hands it to tools like Claude Code. Settings and sessions carry over
+untouched, so there's nothing to do on upgrade.
+
 ### Added
 
+- **Paste images into terminal programs.** With an image on the clipboard
+  (e.g. a screenshot), Cmd+V (Ctrl+Shift+V on Linux) or Paste from the
+  context menu now hands it to programs that accept images from the
+  clipboard, such as Claude Code. Before, nothing happened. Pasting text
+  works as before.
 - **Clipboard access for terminal programs (OSC 52).** tmux (`set-clipboard
   on`), neovim, lazygit and other TUIs can now copy text to the system
   clipboard. The first time a program tries, Shellboard asks "Allow clipboard
   access?" — Allow is remembered, Not now keeps quiet until the next launch.
   Change it any time in Settings → Terminal → Clipboard access for programs.
   Reading the clipboard via OSC 52 is deliberately not supported.
+
+### Changed
+
+- **Update check follows the new repository home** (`calmbit-sro/shellboard`).
+- **Updated dependencies**, including Tauri 2.12.
 
 ## [2.4.1] — 2026-07-21
 
