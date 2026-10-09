@@ -15,6 +15,7 @@ import "@xterm/xterm/css/xterm.css";
 import { scheduleSessionSave, useAppStore } from "../store/appStore";
 import { findTheme } from "../utils/themes";
 import { collectLeaves } from "../utils/mosaic";
+import { pasteClipboardInto } from "../utils/clipboardPaste";
 import {
   registerTerminal,
   unregisterTerminal,
@@ -237,11 +238,7 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
         ? e.metaKey && !e.shiftKey && !e.altKey && key === "v"
         : e.ctrlKey && e.shiftKey && !e.altKey && key === "v";
       if (isPaste) {
-        void readClipboard()
-          .then((text) => {
-            if (text) xterm.paste(text);
-          })
-          .catch(() => {});
+        void pasteClipboardInto(xterm);
         e.preventDefault();
         return false;
       }

@@ -1,16 +1,14 @@
 import { useCallback, useState } from "react";
 import { Mosaic, type MosaicNode } from "react-mosaic-component";
 import "react-mosaic-component/react-mosaic-component.css";
-import {
-  readText as readClipboard,
-  writeText as writeClipboard,
-} from "@tauri-apps/plugin-clipboard-manager";
+import { writeText as writeClipboard } from "@tauri-apps/plugin-clipboard-manager";
 import { useAppStore, type SplitSide } from "../store/appStore";
 import { Terminal } from "./Terminal";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { Terminal as TerminalIcon } from "./icons";
 import { cwdLabel } from "../utils/path";
 import { getTerminal } from "../utils/terminalRegistry";
+import { pasteClipboardInto } from "../utils/clipboardPaste";
 import "./MosaicTab.css";
 
 const IS_MAC =
@@ -105,11 +103,7 @@ export function MosaicTab({ tabId, isActiveTab }: MosaicTabProps) {
           label: "Paste",
           kbd: pasteKbd,
           onClick: () => {
-            void readClipboard()
-              .then((text) => {
-                if (text) xtermForCtx?.paste(text);
-              })
-              .catch(() => {});
+            if (xtermForCtx) void pasteClipboardInto(xtermForCtx);
           },
         },
         { separator: true } as const,
