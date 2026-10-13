@@ -80,20 +80,26 @@ type GithubReleaseResponse = {
 export async function checkForUpdate(
   options: { force?: boolean } = {},
 ): Promise<UpdateInfo | null> {
-  const cache = readCache();
-  if (
-    !options.force &&
-    cache &&
-    Date.now() - cache.checkedAt < CACHE_TTL_MS
-  ) {
-    return cache.info;
-  }
-
   let current: string;
   try {
     current = await getVersion();
   } catch {
     return null;
+  }
+
+  // The cached info was computed against whatever version was running at the
+  // time — after an upgrade it can announce the very version we now run.
+  const cache = readCache();
+  const cachedInfo =
+    cache?.info && compareVersions(cache.info.latest, current) > 0
+      ? cache.info
+      : null;
+  if (
+    !options.force &&
+    cache &&
+    Date.now() - cache.checkedAt < CACHE_TTL_MS
+  ) {
+    return cachedInfo;
   }
 
   let release: GithubReleaseResponse;
@@ -103,11 +109,11 @@ export async function checkForUpdate(
     });
     if (!res.ok) {
       // Don't poison the cache on transient failures — let next startup retry.
-      return cache?.info ?? null;
+      return cachedInfo;
     }
     release = (await res.json()) as GithubReleaseResponse;
   } catch {
-    return cache?.info ?? null;
+    return cachedInfo;
   }
 
   if (release.draft || release.prerelease) {
