@@ -56,7 +56,19 @@ OSC 7 cwd tracking (when `autoCwdTracking` is on) writes a shell-specific init f
 
 ### Tauri command surface
 
-`spawn_pty(cols, rows, cwd?, autoCwdTracking?) → String`, `write_to_pty(id, data)`, `resize_pty(id, cols, rows)`, `kill_pty(id)`, `home_dir() → String`, `git_branch(path) → Option<String>`, `git_status(path) → Option<GitStatus>`. Events: `pty://{id}/data` and `pty://{id}/exit`. Capabilities are declared in `src-tauri/capabilities/default.json`.
+`spawn_pty(cols, rows, cwd?, autoCwdTracking?) → String`, `write_to_pty(id, data)`, `resize_pty(id, cols, rows)`, `kill_pty(id)`, `home_dir() → String`, `git_branch(path) → Option<String>`, `git_status(path) → Option<GitStatus>`, `open_scratch_window(...)`, `discard_scratch_window(id)`, `window_labels() → Vec<String>`, `exit_app()`, `running_apps_snapshot`. Events: `pty://{id}/data` and `pty://{id}/exit`. Capabilities are declared in `src-tauri/capabilities/default.json`.
+
+### Multi-window / scratch windows
+
+Cmd/Ctrl+Shift+N opens a scratch window: a project-less extra window, discarded on close, restored after an app quit. Code is in `src-tauri/src/windows.rs`, `src/utils/windowContext.ts`, `src/utils/appLifecycle.ts`.
+
+- **Window context.** Rust injects `window.__SHELLBOARD_WINDOW__` (`{kind, id, cwd, restored}`) via an initialization script; label is `scratch-<id>` (id restricted to `[A-Za-z0-9-]{1,64}` — it lands in file names). `windowContext.ts` exports `IS_SCRATCH` and `SCRATCH_PROJECT_ID` (`"scratch"`, a synthetic project that holds the window's tabs). The main window has no injection (`kind: "main"`).
+- **Scoped persistence.** Scratch windows use `scratch-<id>.session.json` / `scratch-<id>.buffers.json` and **never write** `shellboard.json` (projects, groups, sidebar, settings). Stale scratch session files are how restore-after-quit finds windows.
+- **Close order.** Closing a scratch window (`closeScratchWindowNow`): `disableSessionAutosave()` → close its stores → `discard_scratch_window` (deletes the files). Order matters, see the plugin-store gotcha below.
+- **Quit.** `quitApp()` in `appLifecycle.ts`: sets `isAppQuitting`, flushes broadcast, asks other windows to flush (`QUIT_FLUSH`, acks bounded to 2000 ms), then `exit_app`. While `isAppQuitting()` scratch windows keep their state instead of discarding.
+- **Menu routing.** Native menu events are `emit_to` the *focused* window (`focused_window_label`); the frontend must subscribe with `getCurrentWebviewWindow().listen` — a global `listen` would receive every window's menu events.
+- **Settings sync.** Saving settings emits `settings://changed`; other windows adopt it via `applyExternalSettings`, which **never saves or re-emits** (no ping-pong, scratch windows don't touch `shellboard.json`).
+- **Per-window zoom.** `zoomOffset` (store, clamped) is applied on top of the shared `terminalFontSize` via `effectiveFontSize`, and is persisted in that window's session.
 
 ### Keyboard shortcut convention
 
@@ -81,3 +93,4 @@ OSC 7 cwd tracking (when `autoCwdTracking` is on) writes a shell-specific init f
 - **`acceptFirstMouse` has a flip side: the activating click now reaches xterm and is forwarded to a mouse-tracking TUI** (interactive prompt, `fzf`, `vim -c 'set mouse=a'`), so switching back from another window can accidentally pick an option. `Terminal.tsx` suppresses the mouse report for that one click via a capture-phase `mousedown` listener + `stopImmediatePropagation` (still calls `xterm.focus()` so typing lands), gated on `isActivatingClick()` from `src/utils/windowActivation.ts` (tracks window `focus`/`blur` + a 250 ms grace). Only the left button, only the activating click — every later click passes through. These two bullets are a pair: don't remove the suppression while keeping `acceptFirstMouse`.
 - **Paste with an image-only clipboard sends Ctrl+V (`\x16`) instead of text** (`src/utils/clipboardPaste.ts`, used by Cmd+V / Ctrl+Shift+V and the context-menu Paste). TUIs like Claude Code read the image themselves via `osascript` but only on the Ctrl+V keypress; an empty text paste reaches them as nothing. Needs the `clipboard-manager:allow-read-image` capability.
 - **OSC 52 (programs writing to the clipboard) is write-only on purpose and goes through the Tauri clipboard plugin.** The `?` read query is ignored so a program can't exfiltrate the clipboard. `navigator.clipboard` can't be used here: WKWebView only allows it during a user gesture, and an escape sequence arriving from the PTY has none. The ask/allow/deny decision (`terminalClipboardAccess`) lives in the store's `requestTerminalClipboardWrite`, not in `Terminal.tsx` — the OSC handler only decodes (`src/utils/osc52.ts`) and delegates.
+- **`tauri-plugin-store` re-saves every loaded store on app exit.** Deleting a scratch window's files while its stores are still loaded (or its autosave still armed) resurrects them. On discard: disable autosave, close the stores, *then* `discard_scratch_window`. Don't reorder.

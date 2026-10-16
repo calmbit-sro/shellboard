@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Scratch windows.** Cmd+Shift+N (Ctrl+Shift+N on Linux/Windows) opens an
+  extra window with its own terminals and no projects, for quick one-off
+  work. Closing it asks for confirmation and discards it; if you quit the
+  app with scratch windows open, they come back with their tabs and
+  scrollback on next launch. Settings changes apply to all windows.
+
+### Changed
+
+- **Terminal zoom is per window.** Zooming in or out in one window no longer
+  resizes the text in your other windows, and each window remembers its own
+  zoom.
+
+### Fixed
+
+- **Cmd+N quick-add returns you where you were.** Closing a quick-added
+  project's last tab now takes you back to the project, tab and panel you
+  opened it from, and expands its group if it was collapsed.
+
 ## [2.5.0] — 2026-10-09
 
 Programs in the terminal can now work with the clipboard in both
