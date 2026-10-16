@@ -8,6 +8,7 @@ import { collectLeaves } from "../utils/mosaic";
 import { useFocusTrap } from "../hooks/useFocusTrap";
 import { Search } from "./icons";
 import { IS_SCRATCH } from "../utils/windowContext";
+import { openScratchFromFocused } from "../shortcuts/actions";
 import "./CommandPalette.css";
 
 const RECENT_MAX = 5;
@@ -280,6 +281,17 @@ export function CommandPalette({
 
             </>
             )}
+
+            <Command.Group heading="Window" className="palette__group">
+              <Command.Item
+                value="new window scratch"
+                onSelect={run(() => openScratchFromFocused())}
+                className="palette__item"
+              >
+                New Window
+                <span className="palette__hint">⌘⇧N</span>
+              </Command.Item>
+            </Command.Group>
 
             <Command.Group heading="Tabs" className="palette__group">
               <Command.Item

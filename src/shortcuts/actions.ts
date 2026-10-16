@@ -88,6 +88,15 @@ function activeAnchor(): string | null {
   return tab?.focusedLeafId ?? (tab?.mosaic ? firstLeafOf(tab.mosaic) : null);
 }
 
+/** Open a new scratch window in the focused terminal's cwd (home when
+ *  unknown). Shared by the `window.newScratch` action and the command palette. */
+export function openScratchFromFocused(): void {
+  const store = useAppStore.getState();
+  const leafId = activeAnchor();
+  const cwd = (leafId ? store.terminals[leafId]?.cwd : undefined) ?? null;
+  void openScratchWindow(cwd);
+}
+
 // Scroll the focused panel to the nearest OSC 133 prompt mark above/below
 // the current viewport top. No-op when shell integration is off or the
 // shell hasn't emitted marks yet.
@@ -232,11 +241,6 @@ export function createActionHandlers(
     "app.quit": () => requestQuit(),
     // New scratch window, starting in the focused terminal's cwd (home when
     // unknown). Works from both main and scratch windows.
-    "window.newScratch": () => {
-      const store = useAppStore.getState();
-      const leafId = activeAnchor();
-      const cwd = (leafId ? store.terminals[leafId]?.cwd : undefined) ?? null;
-      void openScratchWindow(cwd);
-    },
+    "window.newScratch": () => openScratchFromFocused(),
   };
 }
