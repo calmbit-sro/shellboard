@@ -5,22 +5,13 @@ import { collectLeaves } from "../utils/mosaic";
 import { getTerminal } from "../utils/terminalRegistry";
 import { cwdLabel } from "../utils/path";
 import { formatBytes } from "../utils/format";
+import type {
+  RunningApp,
+  RunningAppsSnapshot as Snapshot,
+  SelfMemory,
+} from "../utils/runningApps";
 import { Terminal } from "./icons";
 import "./RunningApps.css";
-
-// Mirrors the Rust `RunningApp` (serde camelCase).
-type RunningApp = {
-  pid: number;
-  name: string;
-  command: string;
-  memoryBytes: number;
-};
-
-// Mirrors the Rust `SelfMemory` (serde camelCase).
-type SelfMemory = { appRssBytes: number; terminalCount: number };
-
-// Mirrors the Rust `RunningAppsSnapshot` (serde camelCase).
-type Snapshot = { apps: Record<string, RunningApp>; selfMemory: SelfMemory };
 
 // Shellboard's own RSS past this looks heavy; turns the footer gauge orange.
 const HIGH_APP_RSS = 1_500_000_000; // 1.5 GB

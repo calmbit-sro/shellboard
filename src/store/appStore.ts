@@ -14,6 +14,7 @@ import {
 } from "../utils/mosaic";
 import { clampZoomOffset } from "../utils/fontSize";
 import {
+  closeWindowStores,
   saveBuffers,
   saveGroups,
   saveProjects,
@@ -37,7 +38,8 @@ import { notifyCommandFinished } from "../utils/notify";
 import { DEFAULT_THEME_ID, findTheme } from "../utils/themes";
 import { isValidBinding, type Binding } from "../shortcuts/binding";
 import { isKnownActionId } from "../shortcuts/registry";
-import { IS_SCRATCH } from "../utils/windowContext";
+import { IS_SCRATCH, WINDOW_CONTEXT } from "../utils/windowContext";
+import { runningAppsInThisWindow, type RunningApp } from "../utils/runningApps";
 
 export type TerminalSession = {
   id: string;
@@ -249,6 +251,11 @@ type AppState = {
   /** When true, App renders the "Quit Shellboard?" confirmation (set only when
    * confirmBeforeQuitting is on). Session-only. */
   pendingQuit: boolean;
+  /** Scratch windows only: when non-null, App renders the "Close window?"
+   * confirmation listing these still-running programs. An empty list means
+   * the running-apps snapshot failed and the generic message is shown.
+   * Session-only. */
+  pendingWindowClose: RunningApp[] | null;
   /** When non-null, App renders the "Allow clipboard access?" prompt; this is
    * the OSC 52 text waiting on the answer (latest request wins). Session-only. */
   pendingClipboardWrite: string | null;
@@ -437,6 +444,11 @@ type AppState = {
   /** Scratch windows only: close this window immediately, discarding its
    * state (no confirm). */
   closeScratchWindowNow: () => Promise<void>;
+  /** Scratch windows only: close this window, asking first (via
+   * pendingWindowClose) only when a program is still running in it. */
+  requestCloseWindow: () => Promise<void>;
+  confirmCloseWindow: () => void;
+  cancelCloseWindow: () => void;
 };
 
 export type SplitSide = "left" | "right" | "up" | "down";
@@ -720,6 +732,62 @@ function maybeWarnTerminalCount(
   }
 }
 
+let scratchCloseInFlight: Promise<void> | null = null;
+
+/**
+ * Tear down a scratch window for good. Order matters:
+ *   1. stop autosave and wait out any in-flight flush — a save after step 4
+ *      would reload the store and recreate the file;
+ *   2. drop tabs/terminals from state BEFORE killing PTYs, so the exit
+ *      events find nothing to re-enter close logic on;
+ *   3. kill every PTY;
+ *   4. close this window's session/buffers stores — the store plugin saves
+ *      every still-loaded store on app exit, which would resurrect the files;
+ *   5. delete the files;
+ *   6. destroy the window.
+ * Failures in 1–5 are logged and never block destroy().
+ */
+async function discardAndDestroyScratchWindow(
+  set: (partial: Partial<AppState>) => void,
+  get: () => AppState,
+): Promise<void> {
+  try {
+    await disableSessionAutosave();
+  } catch (e) {
+    console.error("disableSessionAutosave failed:", e);
+  }
+  const { tabs, terminals } = get();
+  const ids = new Set<string>(Object.keys(terminals));
+  for (const t of tabs) {
+    if (t.mosaic) for (const id of collectLeaves(t.mosaic)) ids.add(id);
+  }
+  set({
+    tabs: [],
+    terminals: {},
+    activeTabId: null,
+    pendingCloseTabId: null,
+    pendingWindowClose: null,
+  });
+  try {
+    await Promise.all([...ids].map((id) => killTerminal(id)));
+  } catch (e) {
+    console.error("killing scratch terminals failed:", e);
+  }
+  try {
+    await closeWindowStores();
+  } catch (e) {
+    console.error("closeWindowStores failed:", e);
+  }
+  if (WINDOW_CONTEXT.kind === "scratch") {
+    try {
+      await invoke("discard_scratch_window", { id: WINDOW_CONTEXT.id });
+    } catch (e) {
+      console.error("discard_scratch_window failed:", e);
+    }
+  }
+  await getCurrentWebviewWindow().destroy();
+}
+
 export const useAppStore = create<AppState>()((set, get) => ({
   tabs: [],
   activeTabId: null,
@@ -743,6 +811,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   pendingCloseTabId: null,
   pendingCullTabIds: null,
   pendingQuit: false,
+  pendingWindowClose: null,
   pendingClipboardWrite: null,
   clipboardPromptDismissed: false,
   searchingTerminalId: null,
@@ -912,6 +981,13 @@ export const useAppStore = create<AppState>()((set, get) => ({
     const { tabs, settings } = get();
     const tab = tabs.find((t) => t.id === tabId);
     if (!tab) return;
+    // Scratch window's last tab: closing it closes the window. That flow has
+    // its own (running-programs) confirm, which replaces the split-tab one so
+    // the user sees a single dialog.
+    if (IS_SCRATCH && tabs.length === 1) {
+      void get().requestCloseWindow();
+      return;
+    }
     const isSplit = tab.mosaic ? collectLeaves(tab.mosaic).length > 1 : false;
     if (settings.confirmCloseSplitTab && isSplit) {
       set({ pendingCloseTabId: tabId });
@@ -1400,6 +1476,12 @@ export const useAppStore = create<AppState>()((set, get) => ({
     const newMosaic = removeLeaf(tab.mosaic, leafId);
 
     if (newMosaic === null) {
+      // Last panel of a scratch window's last tab: closing it closes the
+      // window — ask first if something is still running.
+      if (IS_SCRATCH && tabs.length === 1) {
+        await get().requestCloseWindow();
+        return;
+      }
       // Only panel in the tab — delegate to closeTab (kills the PTY + handles
       // the "last tab → open new empty" rule from M2).
       await get().closeTab(tab.id);
@@ -2105,11 +2187,44 @@ export const useAppStore = create<AppState>()((set, get) => ({
     }
   },
 
-  closeScratchWindowNow: async () => {
-    // Stub — Task 5 adds the discard steps before destroy (disable autosave,
-    // kill PTYs, close the window's stores, delete its session/buffer files).
-    await getCurrentWebviewWindow().destroy();
+  closeScratchWindowNow: () => {
+    // Idempotent: the `exit` path (closeTab) and a confirmed close can race;
+    // both get the same teardown.
+    if (!scratchCloseInFlight) {
+      scratchCloseInFlight = discardAndDestroyScratchWindow(set, get);
+    }
+    return scratchCloseInFlight;
   },
+
+  requestCloseWindow: async () => {
+    if (get().pendingWindowClose !== null) return;
+    let running: RunningApp[];
+    try {
+      running = await runningAppsInThisWindow();
+    } catch (e) {
+      console.error("running_apps_snapshot failed:", e);
+      // Can't tell what's running — ask (generic message) rather than
+      // silently killing something.
+      set({ pendingWindowClose: [] });
+      return;
+    }
+    if (running.length === 0) {
+      try {
+        await get().closeScratchWindowNow();
+      } catch (e) {
+        console.error("closeScratchWindowNow failed:", e);
+      }
+    } else {
+      set({ pendingWindowClose: running });
+    }
+  },
+  confirmCloseWindow: () => {
+    set({ pendingWindowClose: null });
+    void get()
+      .closeScratchWindowNow()
+      .catch((e) => console.error("closeScratchWindowNow failed:", e));
+  },
+  cancelCloseWindow: () => set({ pendingWindowClose: null }),
 }));
 
 // --- session autosave ---
@@ -2127,8 +2242,36 @@ const SAVE_DEBOUNCE_MS = 500;
 // doesn't stay stale on disk.
 const SAVE_MAX_WAIT_MS = 10_000;
 
+// Set once a scratch window is being discarded: no save may run again (it
+// would recreate the files being deleted), and a deferred
+// enableSessionAutosave() must not switch saving back on.
+let sessionSaveDisabled = false;
+
 export function enableSessionAutosave() {
+  if (sessionSaveDisabled) return;
   sessionSaveEnabled = true;
+}
+
+/**
+ * Permanently stop session saving for this window: cancel pending timers,
+ * make later schedule/flush calls no-ops, and wait for any in-flight flush
+ * to finish so nothing writes after the caller proceeds.
+ */
+export async function disableSessionAutosave(): Promise<void> {
+  sessionSaveDisabled = true;
+  sessionSaveEnabled = false;
+  if (sessionSaveTimer) clearTimeout(sessionSaveTimer);
+  if (sessionSaveMaxTimer) clearTimeout(sessionSaveMaxTimer);
+  sessionSaveTimer = null;
+  sessionSaveMaxTimer = null;
+  flushRerunRequested = false;
+  if (flushInFlight) {
+    try {
+      await flushInFlight;
+    } catch {
+      /* the flush logs its own failures */
+    }
+  }
 }
 
 /**
@@ -2167,6 +2310,7 @@ let flushInFlight: Promise<void> | null = null;
 let flushRerunRequested = false;
 
 export function flushSessionSave(): Promise<void> {
+  if (sessionSaveDisabled) return flushInFlight ?? Promise.resolve();
   if (flushInFlight) {
     flushRerunRequested = true;
     return flushInFlight;
@@ -2176,7 +2320,7 @@ export function flushSessionSave(): Promise<void> {
       do {
         flushRerunRequested = false;
         await flushSessionSaveOnce();
-      } while (flushRerunRequested);
+      } while (flushRerunRequested && !sessionSaveDisabled);
     } finally {
       flushInFlight = null;
     }

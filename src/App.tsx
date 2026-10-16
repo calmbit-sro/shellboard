@@ -92,6 +92,12 @@ function mixHex(a: string, b: string, tWeight: number): string {
 
 /** Startup for a scratch window: one implicit project, no sidebar, and a
  * session scoped to this window's own files (see utils/persistence). */
+// Task 6 wires the real isAppQuitting() — replace this placeholder with
+// `import { isAppQuitting } from "./utils/appLifecycle";`.
+function isAppQuitting(): boolean {
+  return false;
+}
+
 async function bootScratch(): Promise<void> {
   if (WINDOW_CONTEXT.kind !== "scratch") return;
   const { cwd, restored } = WINDOW_CONTEXT;
@@ -169,6 +175,9 @@ function App() {
   const pendingClipboardWrite = useAppStore((s) => s.pendingClipboardWrite);
   const allowClipboardAccess = useAppStore((s) => s.allowClipboardAccess);
   const dismissClipboardPrompt = useAppStore((s) => s.dismissClipboardPrompt);
+  const pendingWindowClose = useAppStore((s) => s.pendingWindowClose);
+  const confirmCloseWindow = useAppStore((s) => s.confirmCloseWindow);
+  const cancelCloseWindow = useAppStore((s) => s.cancelCloseWindow);
   const initRan = useRef(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -200,6 +209,7 @@ function App() {
     pendingCloseTabId !== null ||
     (!!pendingCullTabIds && pendingCullTabIds.length > 0) ||
     pendingQuit ||
+    pendingWindowClose !== null ||
     pendingClipboardWrite !== null;
 
   // Modal-open callbacks shared by the keyboard dispatcher and the native-menu
@@ -235,6 +245,16 @@ function App() {
   useEffect(() => {
     const win = getCurrentWebviewWindow();
     const unlistenPromise = win.onCloseRequested((event) => {
+      if (IS_SCRATCH) {
+        // App-wide quit: let the window go without discarding — its state
+        // is restored on next launch.
+        if (isAppQuitting()) return;
+        // Red button on a scratch window closes just this window (asking
+        // first if a program is running) and discards its state.
+        event.preventDefault();
+        void useAppStore.getState().requestCloseWindow();
+        return;
+      }
       event.preventDefault();
       requestQuit();
     });
@@ -636,6 +656,20 @@ function App() {
         destructive
         onConfirm={() => void performQuit()}
         onCancel={cancelQuit}
+      />
+      <ConfirmDialog
+        open={pendingWindowClose !== null}
+        title="Close window?"
+        message={
+          pendingWindowClose && pendingWindowClose.length > 0
+            ? `These programs are still running: ${pendingWindowClose.map((a) => a.name).join(", ")}. Closing the window will end them.`
+            : "Close this window and end all its terminals?"
+        }
+        confirmLabel="Close window"
+        cancelLabel="Cancel"
+        destructive
+        onConfirm={confirmCloseWindow}
+        onCancel={cancelCloseWindow}
       />
       <ConfirmDialog
         open={pendingClipboardWrite !== null}
