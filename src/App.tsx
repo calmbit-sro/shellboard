@@ -30,7 +30,6 @@ import {
 } from "./shortcuts/actions";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import {
   enableSessionAutosave,
   useAppStore,
@@ -52,6 +51,7 @@ import {
   WINDOW_CONTEXT,
   scratchProject,
 } from "./utils/windowContext";
+import { installLifecycleListeners, isAppQuitting } from "./utils/appLifecycle";
 import "./App.css";
 
 const IS_MAC =
@@ -92,12 +92,6 @@ function mixHex(a: string, b: string, tWeight: number): string {
 
 /** Startup for a scratch window: one implicit project, no sidebar, and a
  * session scoped to this window's own files (see utils/persistence). */
-// Task 6 wires the real isAppQuitting() — replace this placeholder with
-// `import { isAppQuitting } from "./utils/appLifecycle";`.
-function isAppQuitting(): boolean {
-  return false;
-}
-
 async function bootScratch(): Promise<void> {
   if (WINDOW_CONTEXT.kind !== "scratch") return;
   const { cwd, restored } = WINDOW_CONTEXT;
@@ -238,6 +232,10 @@ function App() {
     );
   }, [uiFontSize]);
 
+  // Cross-window lifecycle: flush on another window's app-wide quit, adopt
+  // settings saved in another window.
+  useEffect(() => installLifecycleListeners(), []);
+
   // Intercept window close (red button / Cmd+Q) so we control teardown: always
   // preventDefault, then route through requestQuit() which honors the
   // confirmBeforeQuitting setting (show the dialog) or quits immediately,
@@ -255,6 +253,8 @@ function App() {
         void useAppStore.getState().requestCloseWindow();
         return;
       }
+      // An app-wide quit is already flushing and exiting — don't re-prompt.
+      if (isAppQuitting()) return;
       event.preventDefault();
       requestQuit();
     });
@@ -509,7 +509,8 @@ function App() {
   // exactly once.)
   useEffect(() => {
     const handlers = createActionHandlers(actionCtx);
-    const unlisten = listen<string>("menu://action", (e) => {
+    // Rust targets the focused window, so listen on this window only.
+    const unlisten = getCurrentWebviewWindow().listen<string>("menu://action", (e) => {
       const id = e.payload;
       const key = id.startsWith("menu.") ? id.slice(5) : id;
       // The keyboard dispatcher stands down while a dialog is open — but

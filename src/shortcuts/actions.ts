@@ -11,11 +11,8 @@
 // applicable (no dynamic menu enable/disable needed).
 
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import {
-  flushSessionSave,
-  useAppStore,
-} from "../store/appStore";
+import { useAppStore } from "../store/appStore";
+import { openScratchWindow, quitApp } from "../utils/appLifecycle";
 import { firstLeafOf } from "../utils/mosaic";
 import { cwdLabel } from "../utils/path";
 import { getTerminal } from "../utils/terminalRegistry";
@@ -55,16 +52,11 @@ export function pushMenuShortcuts(): void {
   });
 }
 
-/** Flush the debounced session save, then tear the window down. Both quit
- *  entry points (menu/shortcut Quit and the window close button) funnel here so
- *  in-flight session state can't be lost. */
+/** Quit the whole app: every window flushes its session state, then the
+ *  process exits (see utils/appLifecycle). Both quit entry points (menu/shortcut
+ *  Quit and the main window's close button) funnel here. */
 export async function performQuit(): Promise<void> {
-  try {
-    await flushSessionSave();
-  } catch {
-    /* don't block quit on save failure */
-  }
-  await getCurrentWebviewWindow().destroy();
+  await quitApp();
 }
 
 /** Route a quit request through the confirmBeforeQuitting setting: open the
@@ -238,5 +230,13 @@ export function createActionHandlers(
     // tearing the window down, mirroring the onCloseRequested path so a menu
     // Quit can't lose in-flight state.
     "app.quit": () => requestQuit(),
+    // New scratch window, starting in the focused terminal's cwd (home when
+    // unknown). Works from both main and scratch windows.
+    "window.newScratch": () => {
+      const store = useAppStore.getState();
+      const leafId = activeAnchor();
+      const cwd = (leafId ? store.terminals[leafId]?.cwd : undefined) ?? null;
+      void openScratchWindow(cwd);
+    },
   };
 }

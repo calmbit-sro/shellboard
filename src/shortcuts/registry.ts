@@ -202,6 +202,12 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
     label: "Command palette",
     defaultBinding: primary({ key: "k" }),
   },
+  {
+    id: "window.newScratch",
+    category: "App",
+    label: "New scratch window",
+    defaultBinding: primary({ shift: true, key: "n" }),
+  },
 ];
 
 export const SHORTCUT_CATEGORIES: ShortcutCategory[] = [

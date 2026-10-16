@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { emit } from "@tauri-apps/api/event";
 import { writeText as writeClipboard } from "@tauri-apps/plugin-clipboard-manager";
 import type { MosaicDirection, MosaicNode } from "react-mosaic-component";
 import {
@@ -323,6 +324,9 @@ type AppState = {
   toggleSidebar: () => Promise<void>;
 
   updateSettings: (patch: Partial<Settings>) => Promise<void>;
+  /** Adopt settings saved by another window (`settings://changed`). Never
+   * saves or re-emits — the originating window already did both. */
+  applyExternalSettings: (s: Settings) => void;
 
   requestTabRename: (tabId: string | null) => void;
   requestProjectRename: (projectId: string | null) => void;
@@ -869,8 +873,20 @@ export const useAppStore = create<AppState>()((set, get) => ({
   updateSettings: async (patch) => {
     const prev = get().settings;
     const next = clampSettings({ ...prev, ...patch });
-    set({ settings: next });
+    set((state) => ({
+      settings: next,
+      zoomOffset: clampZoomOffset(next.terminalFontSize, state.zoomOffset),
+    }));
     await saveSettings(next);
+    // Live-sync every other window (each has its own store).
+    try {
+      await emit("settings://changed", {
+        from: getCurrentWebviewWindow().label,
+        settings: next,
+      });
+    } catch {
+      /* off-Tauri — nothing to sync */
+    }
     // Toggling scrollback persistence off — wipe the existing buffers
     // file once so disk doesn't keep stale snapshots from before the
     // toggle. Subsequent saves are skipped by flushSessionSave.
@@ -880,6 +896,22 @@ export const useAppStore = create<AppState>()((set, get) => ({
       } catch {
         /* non-fatal */
       }
+    }
+  },
+
+  applyExternalSettings: (s) => {
+    const prev = get().settings;
+    const next = clampSettings(s);
+    set((state) => ({
+      settings: next,
+      zoomOffset: clampZoomOffset(next.terminalFontSize, state.zoomOffset),
+    }));
+    // Same one-shot wipe as updateSettings, for this window's own buffers
+    // file — unless the window is being discarded (its stores are closed).
+    if (prev.persistScrollback && !next.persistScrollback && !sessionSaveDisabled) {
+      void saveBuffers({}).catch(() => {
+        /* non-fatal */
+      });
     }
   },
 
