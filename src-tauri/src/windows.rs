@@ -139,6 +139,11 @@ pub fn restore_scratch_windows<R: Runtime>(app: &AppHandle<R>) {
             eprintln!("shellboard: failed to restore scratch window {id}: {e}");
         }
     }
+    // Restored windows open on top and take focus; hand it back to the main
+    // window so launch lands where the user expects.
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.set_focus();
+    }
 }
 
 // Label of the focused webview window, falling back to the main window (e.g. a

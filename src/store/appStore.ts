@@ -738,6 +738,13 @@ function maybeWarnTerminalCount(
 
 let scratchCloseInFlight: Promise<void> | null = null;
 
+/** True once this scratch window's discard-and-destroy teardown has started.
+ *  bootScratch checks it after each await so startup can't spawn a PTY into a
+ *  window that is already going away. */
+export function isScratchClosing(): boolean {
+  return scratchCloseInFlight !== null;
+}
+
 /**
  * Tear down a scratch window for good. Order matters:
  *   1. stop autosave and wait out any in-flight flush — a save after step 4
@@ -789,7 +796,13 @@ async function discardAndDestroyScratchWindow(
       console.error("discard_scratch_window failed:", e);
     }
   }
-  await getCurrentWebviewWindow().destroy();
+  try {
+    await getCurrentWebviewWindow().destroy();
+  } catch (e) {
+    // The window is still here: allow another close attempt to retry.
+    scratchCloseInFlight = null;
+    throw e;
+  }
 }
 
 export const useAppStore = create<AppState>()((set, get) => ({

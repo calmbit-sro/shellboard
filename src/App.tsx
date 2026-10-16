@@ -32,6 +32,7 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { invoke } from "@tauri-apps/api/core";
 import {
   enableSessionAutosave,
+  isScratchClosing,
   useAppStore,
   type Project,
   type ProjectGroup,
@@ -100,6 +101,9 @@ async function bootScratch(): Promise<void> {
       PersistenceKeys.settings,
     ).catch(() => null);
     const path = cwd ?? (await invoke<string>("home_dir"));
+    // The window may have started closing while we awaited — stop, or we'd
+    // spawn a PTY nobody tears down.
+    if (isScratchClosing()) return;
     useAppStore.getState().hydrate({
       projects: [scratchProject(path)],
       groups: [],
@@ -111,14 +115,17 @@ async function bootScratch(): Promise<void> {
       loadSession().catch(() => null),
       loadBuffers().catch(() => ({}) as Record<string, string>),
     ]);
+    if (isScratchClosing()) return;
 
     if (session && (session.tabsByProject[SCRATCH_PROJECT_ID]?.length ?? 0) > 0) {
       const effectiveBuffers = useAppStore.getState().settings.persistScrollback
         ? buffers
         : ({} as Record<string, string>);
       await useAppStore.getState().restoreSession(session, effectiveBuffers);
+      if (isScratchClosing()) return;
       if (!useAppStore.getState().activeProjectId) {
         await useAppStore.getState().setActiveProject(SCRATCH_PROJECT_ID);
+        if (isScratchClosing()) return;
       }
       // Same deferral as the main window — see the comment there.
       setTimeout(() => enableSessionAutosave(), 3000);
@@ -132,13 +139,16 @@ async function bootScratch(): Promise<void> {
       return;
     }
 
+    if (isScratchClosing()) return;
     // setActiveProject spawns the first tab itself when the project has
     // none, at project.path (already cwd ?? home) — no explicit addTab, or
     // the window would open with two tabs.
     await useAppStore.getState().setActiveProject(SCRATCH_PROJECT_ID);
+    if (isScratchClosing()) return;
     enableSessionAutosave();
   } catch (err) {
     console.error("scratch startup failed:", err);
+    if (isScratchClosing()) return;
     if (restored) {
       void useAppStore
         .getState()
@@ -244,18 +254,23 @@ function App() {
     const win = getCurrentWebviewWindow();
     const unlistenPromise = win.onCloseRequested((event) => {
       if (IS_SCRATCH) {
-        // App-wide quit: let the window go without discarding — its state
-        // is restored on next launch.
-        if (isAppQuitting()) return;
+        // App-wide quit in progress: keep the window (and its state, which is
+        // restored on next launch) — the process exit takes it down. Letting a
+        // red-button click destroy it mid-quit could cut its flush short.
+        if (isAppQuitting()) {
+          event.preventDefault();
+          return;
+        }
         // Red button on a scratch window closes just this window (asking
         // first if a program is running) and discards its state.
         event.preventDefault();
         void useAppStore.getState().requestCloseWindow();
         return;
       }
-      // An app-wide quit is already flushing and exiting — don't re-prompt.
-      if (isAppQuitting()) return;
+      // Always keep the window; an app-wide quit already flushing and exiting
+      // must neither re-prompt nor be cut short by the window closing.
       event.preventDefault();
+      if (isAppQuitting()) return;
       requestQuit();
     });
     return () => {

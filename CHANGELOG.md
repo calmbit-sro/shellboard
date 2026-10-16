@@ -11,8 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Scratch windows.** Cmd+Shift+N (Ctrl+Shift+N on Linux/Windows) opens an
   extra window with its own terminals and no projects, for quick one-off
-  work. Closing it asks for confirmation and discards it; if you quit the
-  app with scratch windows open, they come back with their tabs (and
+  work. Closing it discards it (asking first if a program is still
+  running); if you quit the app with scratch windows open, they come back with their tabs (and
   scrollback, if scrollback persistence is on) on next launch. Settings changes apply to all windows.
 
 ### Changed
