@@ -1,6 +1,6 @@
 import type { MosaicDirection, MosaicNode } from "react-mosaic-component";
 import type { Tab, TerminalSession } from "../store/appStore";
-import { isLeaf } from "./mosaic";
+import { collectLeaves, firstLeafOf, isLeaf } from "./mosaic";
 import { getSerializer } from "./terminalRegistry";
 
 /** Cap serialized buffer per terminal to keep buffers.json manageable.
@@ -23,6 +23,10 @@ export type PersistedTab = {
   title: string;
   customTitle: boolean;
   layout: PersistedLayout;
+  /** Position of the focused panel in leaf order (`collectLeaves`), so a
+   * restored split gets focus back on the same panel. Optional: older
+   * session files don't have it. */
+  focusedLeafIndex?: number;
 };
 
 export type PersistedSession = {
@@ -124,12 +128,27 @@ export function tabToPersisted(
   buffers: Record<string, string>,
 ): PersistedTab | null {
   if (!tab.mosaic) return null;
+  const focusedIndex = tab.focusedLeafId
+    ? collectLeaves(tab.mosaic).indexOf(tab.focusedLeafId)
+    : -1;
   return {
     id: tab.id,
     title: tab.title,
     customTitle: tab.customTitle,
     layout: mosaicToLayout(tab.mosaic, terminals, buffers),
+    ...(focusedIndex > 0 ? { focusedLeafIndex: focusedIndex } : {}),
   };
+}
+
+/** The leaf of a freshly rebuilt mosaic that should get focus. Leaf order of
+ * `buildMosaicFromLayout` matches `collectLeaves`, so the saved index maps
+ * straight back; anything out of range falls back to the first leaf. */
+export function restoredFocusLeaf(
+  mosaic: MosaicNode<string>,
+  focusedLeafIndex: number | undefined,
+): string {
+  if (focusedLeafIndex === undefined) return firstLeafOf(mosaic);
+  return collectLeaves(mosaic)[focusedLeafIndex] ?? firstLeafOf(mosaic);
 }
 
 export function serializeSession(state: {

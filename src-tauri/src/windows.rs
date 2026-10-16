@@ -10,6 +10,9 @@ const LABEL_PREFIX: &str = "scratch-";
 const SESSION_SUFFIX: &str = ".session.json";
 const BUFFERS_SUFFIX: &str = ".buffers.json";
 const MAX_ID_LEN: usize = 64;
+// Label of the window that had focus when the app quit, so the next launch can
+// hand focus back to it. Plain text next to the store files.
+const LAST_FOCUSED_FILE: &str = "last-focused-window";
 
 // Ids end up in file names and window labels, so restrict them to a safe
 // charset (uuid-shaped: ASCII alphanumerics and '-') — no path separators or dots.
@@ -119,6 +122,10 @@ pub fn window_labels<R: Runtime>(app: AppHandle<R>) -> Vec<String> {
 
 #[tauri::command]
 pub fn exit_app<R: Runtime>(app: AppHandle<R>) {
+    // Best effort: a failed write just means launch focuses the main window.
+    if let Ok(path) = tauri_plugin_store::resolve_store_path(&app, LAST_FOCUSED_FILE) {
+        let _ = std::fs::write(path, focused_window_label(&app));
+    }
     app.exit(0);
 }
 
@@ -139,10 +146,14 @@ pub fn restore_scratch_windows<R: Runtime>(app: &AppHandle<R>) {
             eprintln!("shellboard: failed to restore scratch window {id}: {e}");
         }
     }
-    // Restored windows open on top and take focus; hand it back to the main
-    // window so launch lands where the user expects.
-    if let Some(main) = app.get_webview_window("main") {
-        let _ = main.set_focus();
+    // Restored windows open on top and take focus; hand it to the window that
+    // was focused at quit (falls back to main if that window is gone).
+    let last = std::fs::read_to_string(dir.join(LAST_FOCUSED_FILE)).unwrap_or_default();
+    let target = app
+        .get_webview_window(last.trim())
+        .or_else(|| app.get_webview_window("main"));
+    if let Some(window) = target {
+        let _ = window.set_focus();
     }
 }
 

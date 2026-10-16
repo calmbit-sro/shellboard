@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Terminal zoom is per window.** Zooming in or out in one window no longer
   resizes the text in your other windows, and each window remembers its own
   zoom.
+- **Focus comes back where you left it.** After a restart the window that
+  was focused when you quit gets focus again, and split tabs focus the panel
+  you were last in instead of the first one.
 
 ### Fixed
 
