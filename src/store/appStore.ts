@@ -106,6 +106,12 @@ export type Project = {
   autoCwdName?: boolean;
 };
 
+export type QuickAddReturn = {
+  projectId: string;
+  tabId: string | null;
+  leafId: string | null;
+};
+
 export type ProjectGroup = {
   id: string;
   name: string;
@@ -277,6 +283,11 @@ type AppState = {
    * Session-only — not persisted. Used by the command palette to surface
    * recently-used terminals as quick jump targets. Most recent first. */
   recentLeafIds: string[];
+  /** Where to go back to when a quick-add project disappears, keyed by the
+   * quick-add project's id. Captured by `project.quickAdd` (the project /
+   * tab / panel that was active when Cmd/Ctrl+N was pressed). Session-only —
+   * after a restart the removal falls back to the first project. */
+  quickAddReturns: Record<string, QuickAddReturn>;
   /** Transient alt-tab session for the recent-terminal switcher. Non-null only
    * while the user is holding the switcher modifier and cycling. `order` is a
    * frozen snapshot of recentLeafIds (alive leaves) so stepping doesn't reshuffle
@@ -398,6 +409,7 @@ type AppState = {
   ) => Promise<Project | null>;
   updateProject: (id: string, patch: Partial<Omit<Project, "id" | "createdAt">>) => Promise<void>;
   removeProject: (id: string) => Promise<void>;
+  setQuickAddReturn: (projectId: string, target: QuickAddReturn) => void;
   openProject: (projectId: string) => Promise<void>;
   setActiveProject: (projectId: string) => Promise<void>;
   reorderProjects: (fromId: string, toId: string) => Promise<void>;
@@ -726,6 +738,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   pendingBuffers: {},
   updateInfo: null,
   recentLeafIds: [],
+  quickAddReturns: {},
   switcher: null,
   errorToast: null,
 
@@ -1619,16 +1632,54 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
     await saveProjects(remainingProjects);
 
-    // If the removed project was active, move focus to another project
-    // (or to the empty state if there are none left).
+    // Quick-add return targets: drop this project's own entry, and retarget
+    // entries that pointed at it to where it would have returned, so chained
+    // quick-adds (A from P, B from A, close A, close B) still land on P.
+    const returnTo = get().quickAddReturns[id];
+    const nextReturns: Record<string, QuickAddReturn> = {};
+    for (const [pid, target] of Object.entries(get().quickAddReturns)) {
+      if (pid === id) continue;
+      nextReturns[pid] = target.projectId === id && returnTo ? returnTo : target;
+    }
+    set({ quickAddReturns: nextReturns });
+
+    // If the removed project was active, move focus back to where the
+    // quick-add was opened from, else to another project (or to the empty
+    // state if there are none left).
     if (activeProjectId === id) {
-      if (remainingProjects.length > 0) {
+      if (returnTo && remainingProjects.some((p) => p.id === returnTo.projectId)) {
+        // Prefer the exact panel, then the origin tab's focused panel, then
+        // the project's own remembered tab (setActiveProject).
+        const originTab = get().tabs.find((t) => t.id === returnTo.tabId);
+        const leaves = originTab?.mosaic ? collectLeaves(originTab.mosaic) : [];
+        const leaf =
+          (returnTo.leafId && leaves.includes(returnTo.leafId) && returnTo.leafId) ||
+          (originTab?.focusedLeafId && leaves.includes(originTab.focusedLeafId)
+            ? originTab.focusedLeafId
+            : leaves[0]);
+        if (leaf && get().terminals[leaf]) {
+          await get().revealTerminal(leaf);
+        } else {
+          await get().setActiveProject(returnTo.projectId);
+        }
+      } else if (remainingProjects.length > 0) {
         await get().setActiveProject(remainingProjects[0].id);
       } else {
         set({ activeProjectId: null, activeTabId: null });
       }
+      // Don't leave the user on a project hidden inside a collapsed group.
+      const landed = get().projects.find((p) => p.id === get().activeProjectId);
+      const group = landed?.groupId
+        ? get().groups.find((g) => g.id === landed.groupId)
+        : undefined;
+      if (group?.collapsed) await get().toggleGroup(group.id);
     }
   },
+
+  setQuickAddReturn: (projectId, target) =>
+    set((state) => ({
+      quickAddReturns: { ...state.quickAddReturns, [projectId]: target },
+    })),
 
   openProject: async (projectId) => {
     await get().setActiveProject(projectId);

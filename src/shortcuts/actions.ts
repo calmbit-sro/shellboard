@@ -206,6 +206,11 @@ export function createActionHandlers(
       const leafId = activeAnchor();
       const cwd = leafId ? store.terminals[leafId]?.cwd : undefined;
       if (!cwd) return;
+      // Remember where we came from so closing the quick-add project's last
+      // tab (e.g. `exit`) lands back here instead of on the first project.
+      const origin = store.activeProjectId
+        ? { projectId: store.activeProjectId, tabId: store.activeTabId, leafId }
+        : null;
       void (async () => {
         const project = await store.addProject({
           path: cwd,
@@ -215,6 +220,7 @@ export function createActionHandlers(
         });
         // Null = spawning the first terminal failed; toast already shown.
         if (!project) return;
+        if (origin) useAppStore.getState().setQuickAddReturn(project.id, origin);
         await store.openProject(project.id);
       })();
     },
