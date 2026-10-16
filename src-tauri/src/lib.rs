@@ -1,4 +1,5 @@
 mod pty;
+mod windows;
 
 use std::collections::HashMap;
 
@@ -7,10 +8,14 @@ use pty::{
     write_to_pty, PtyManager,
 };
 use std::path::Path;
+use windows::{
+    discard_scratch_window, exit_app, focused_window_label, open_scratch_window,
+    restore_scratch_windows, window_labels,
+};
 
 use tauri::{
     menu::{Menu, MenuBuilder, MenuItem, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder},
-    AppHandle, Emitter, Manager, Runtime,
+    AppHandle, Emitter, EventTarget, Manager, Runtime,
 };
 
 // Per-item shortcut display the frontend pushes (see set_menu_shortcuts). `accel`
@@ -40,6 +45,7 @@ struct ShortcutInfo {
 fn mac_accel(id: &str) -> &'static str {
     match id {
         "menu.tab.new" => "CmdOrCtrl+T",
+        "menu.window.newScratch" => "CmdOrCtrl+Shift+N",
         "menu.tab.close" => "CmdOrCtrl+W",
         "menu.tab.reopen" => "CmdOrCtrl+Shift+T",
         "menu.panel.close" => "CmdOrCtrl+Shift+W",
@@ -78,6 +84,7 @@ fn mac_accel(id: &str) -> &'static str {
 fn linux_combo(id: &str) -> &'static str {
     match id {
         "menu.tab.new" => "Ctrl+T",
+        "menu.window.newScratch" => "Ctrl+Shift+N",
         "menu.tab.close" => "Ctrl+W",
         "menu.tab.reopen" => "Ctrl+Shift+T",
         "menu.panel.close" => "Ctrl+Shift+W",
@@ -224,6 +231,7 @@ fn build_menu<R: Runtime>(
 
         let file = SubmenuBuilder::new(h, "File")
             .item(&shortcut_item(h, "menu.tab.new", "New Tab", shortcuts)?)
+            .item(&shortcut_item(h, "menu.window.newScratch", "New Window", shortcuts)?)
             .text("menu.tab.duplicate", "Duplicate Tab")
             .separator()
             .text("menu.project.add", "Add Project…")
@@ -280,6 +288,7 @@ fn build_menu<R: Runtime>(
     {
         let file = SubmenuBuilder::new(h, "File")
             .item(&shortcut_item(h, "menu.tab.new", "New Tab", shortcuts)?)
+            .item(&shortcut_item(h, "menu.window.newScratch", "New Window", shortcuts)?)
             .text("menu.tab.duplicate", "Duplicate Tab")
             .separator()
             .text("menu.project.add", "Add Project…")
@@ -439,11 +448,15 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             migrate_legacy_config(app.handle());
+            restore_scratch_windows(app.handle());
             Ok(())
         })
         .menu(|handle| build_menu(handle, &HashMap::new()))
         .on_menu_event(|app, event| {
-            let _ = app.emit("menu://action", event.id().as_ref());
+            // Route to the focused window so a menu action applies to the window
+            // the user is looking at (main or a scratch window).
+            let target = EventTarget::webview_window(focused_window_label(app));
+            let _ = app.emit_to(target, "menu://action", event.id().as_ref());
         })
         .manage(PtyManager::default())
         .invoke_handler(tauri::generate_handler![
@@ -455,7 +468,11 @@ pub fn run() {
             git_branch,
             git_status,
             running_apps_snapshot,
-            set_menu_shortcuts
+            set_menu_shortcuts,
+            open_scratch_window,
+            discard_scratch_window,
+            window_labels,
+            exit_app
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
