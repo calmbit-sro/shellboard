@@ -1,13 +1,18 @@
 import { load, type Store } from "@tauri-apps/plugin-store";
 import type { PersistedSession } from "./sessionSerialize";
+import { IS_SCRATCH, WINDOW_CONTEXT } from "./windowContext";
 
 const CONFIG_FILE = "shellboard.json";
-const SESSION_FILE = "session.json";
+// Scratch windows keep their own session/buffers files (names must match the
+// Rust-side helpers) and never write the shared projects/groups/sidebar keys.
+const SCRATCH_PREFIX =
+  WINDOW_CONTEXT.kind === "scratch" ? `scratch-${WINDOW_CONTEXT.id}.` : "";
+const SESSION_FILE = `${SCRATCH_PREFIX}session.json`;
 // Scrollback snapshots live in their own file. They can be huge and
 // fully regenerable, so isolating them from tabs/projects state keeps
 // the main session.json small and human-inspectable, and a corrupted
 // buffers file never takes the layout down with it.
-const BUFFERS_FILE = "buffers.json";
+const BUFFERS_FILE = `${SCRATCH_PREFIX}buffers.json`;
 
 const KEY_PROJECTS = "projects";
 const KEY_GROUPS = "groups";
@@ -65,21 +70,25 @@ async function setAndSave(
 }
 
 export async function saveProjects<T>(projects: T): Promise<void> {
+  if (IS_SCRATCH) return;
   const store = await getConfigStore();
   await setAndSave(store, KEY_PROJECTS, projects);
 }
 
 export async function saveGroups<T>(groups: T): Promise<void> {
+  if (IS_SCRATCH) return;
   const store = await getConfigStore();
   await setAndSave(store, KEY_GROUPS, groups);
 }
 
 export async function saveSidebarWidth(width: number): Promise<void> {
+  if (IS_SCRATCH) return;
   const store = await getConfigStore();
   await setAndSave(store, KEY_SIDEBAR_WIDTH, width);
 }
 
 export async function saveSidebarVisible(visible: boolean): Promise<void> {
+  if (IS_SCRATCH) return;
   const store = await getConfigStore();
   await setAndSave(store, KEY_SIDEBAR_VISIBLE, visible);
 }
@@ -111,6 +120,27 @@ export async function saveBuffers(
 ): Promise<void> {
   const store = await getBuffersStore();
   await setAndSave(store, KEY_BUFFERS, buffers);
+}
+
+/**
+ * Close this window's session/buffers stores and drop the cached handles.
+ * The Rust plugin re-saves every still-loaded store on app exit, so a scratch
+ * window being discarded must call this before its files are deleted.
+ */
+export async function closeWindowStores(): Promise<void> {
+  const pending = [cachedSession, cachedBuffers];
+  cachedSession = null;
+  cachedBuffers = null;
+  await Promise.all(
+    pending.map(async (p) => {
+      if (!p) return;
+      try {
+        await (await p).close();
+      } catch {
+        // store failed to load or already closed
+      }
+    }),
+  );
 }
 
 export const PersistenceKeys = {
