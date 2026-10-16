@@ -12,13 +12,13 @@ const BUFFERS_SUFFIX: &str = ".buffers.json";
 const MAX_ID_LEN: usize = 64;
 
 // Ids end up in file names and window labels, so restrict them to a safe
-// charset (uuid-shaped: alphanumerics, '-' and '_') — no path separators or dots.
+// charset (uuid-shaped: ASCII alphanumerics and '-') — no path separators or dots.
 pub fn is_valid_scratch_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= MAX_ID_LEN
         && id
             .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            .all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
 pub fn scratch_session_file(id: &str) -> String {
@@ -162,6 +162,8 @@ mod tests {
         assert!(!is_valid_scratch_id("../etc"));
         assert!(!is_valid_scratch_id("a/b"));
         assert!(!is_valid_scratch_id(&"a".repeat(65)));
+        assert!(is_valid_scratch_id(&"a".repeat(64)));
+        assert!(!is_valid_scratch_id("a_b"));
     }
 
     #[test]
@@ -172,5 +174,9 @@ mod tests {
         assert_eq!(parse_scratch_session_file("scratch-abc-1.buffers.json"), None);
         assert_eq!(parse_scratch_session_file("scratch-../x.session.json"), None);
         assert_eq!(parse_scratch_session_file("session.json"), None);
+        let long = format!("scratch-{}.session.json", "a".repeat(200));
+        assert_eq!(parse_scratch_session_file(&long), None);
+        assert_eq!(parse_scratch_session_file("SCRATCH-abc.session.json"), None);
+        assert_eq!(parse_scratch_session_file("scratch-.session.json"), None);
     }
 }
