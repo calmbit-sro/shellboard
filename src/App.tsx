@@ -132,16 +132,18 @@ async function bootScratch(): Promise<void> {
       return;
     }
 
-    const store = useAppStore.getState();
-    await store.setActiveProject(SCRATCH_PROJECT_ID);
-    await useAppStore
-      .getState()
-      .addTab({ projectId: SCRATCH_PROJECT_ID, cwd: cwd ?? undefined });
+    // setActiveProject spawns the first tab itself when the project has
+    // none, at project.path (already cwd ?? home) — no explicit addTab, or
+    // the window would open with two tabs.
+    await useAppStore.getState().setActiveProject(SCRATCH_PROJECT_ID);
     enableSessionAutosave();
   } catch (err) {
     console.error("scratch startup failed:", err);
     if (restored) {
-      void useAppStore.getState().closeScratchWindowNow();
+      void useAppStore
+        .getState()
+        .closeScratchWindowNow()
+        .catch((e) => console.error("closeScratchWindowNow failed:", e));
       return;
     }
     enableSessionAutosave();

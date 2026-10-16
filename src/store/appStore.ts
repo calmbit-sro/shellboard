@@ -1062,7 +1062,9 @@ export const useAppStore = create<AppState>()((set, get) => ({
       // (e.g. `exit` in the last panel) closes the window. Nothing can still
       // be running, so no confirm.
       if (IS_SCRATCH) {
-        void get().closeScratchWindowNow();
+        void get()
+          .closeScratchWindowNow()
+          .catch((e) => console.error("closeScratchWindowNow failed:", e));
         return;
       }
       const project = get().projects.find((p) => p.id === tab.projectId);
