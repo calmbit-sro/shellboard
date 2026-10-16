@@ -30,6 +30,8 @@ export type PersistedSession = {
   activeProjectId: string | null;
   lastActiveTabByProject: Record<string, string>;
   tabsByProject: Record<string, PersistedTab[]>;
+  /** Per-window terminal zoom offset; absent in older session files. */
+  zoomOffset?: number;
 };
 
 export type SessionSnapshot = {
@@ -136,6 +138,7 @@ export function serializeSession(state: {
   activeProjectId: string | null;
   lastActiveTabByProject: Record<string, string>;
   projects: { id: string }[];
+  zoomOffset: number;
 }): SessionSnapshot {
   const projectIds = new Set(state.projects.map((p) => p.id));
   const tabsByProject: Record<string, PersistedTab[]> = {};
@@ -162,6 +165,7 @@ export function serializeSession(state: {
       activeProjectId: state.activeProjectId,
       lastActiveTabByProject: lastActive,
       tabsByProject,
+      zoomOffset: state.zoomOffset,
     },
     buffers,
   };

@@ -13,8 +13,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
-  DEFAULT_SETTINGS,
-  SETTINGS_LIMITS,
   flushSessionSave,
   useAppStore,
 } from "../store/appStore";
@@ -111,15 +109,7 @@ function jumpPrompt(dir: -1 | 1): void {
 
 function zoom(delta: 1 | -1 | 0): void {
   const store = useAppStore.getState();
-  const current = store.settings.terminalFontSize;
-  const next =
-    delta === 0
-      ? DEFAULT_SETTINGS.terminalFontSize
-      : Math.max(
-          SETTINGS_LIMITS.terminalFontSize.min,
-          Math.min(SETTINGS_LIMITS.terminalFontSize.max, current + delta),
-        );
-  if (next !== current) void store.updateSettings({ terminalFontSize: next });
+  store.setZoomOffset(delta === 0 ? 0 : store.zoomOffset + delta);
 }
 
 export function createActionHandlers(

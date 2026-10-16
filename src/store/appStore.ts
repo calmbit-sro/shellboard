@@ -11,6 +11,7 @@ import {
   replaceLeaf,
   type FocusDir,
 } from "../utils/mosaic";
+import { clampZoomOffset } from "../utils/fontSize";
 import {
   saveBuffers,
   saveGroups,
@@ -424,6 +425,9 @@ type AppState = {
   handleCommandStart: (terminalId: string) => void;
   /** OSC 133;D — a command finished with this exit code. */
   handleCommandEnd: (terminalId: string, exitCode: number) => void;
+  /** Per-window terminal zoom, added to settings.terminalFontSize. */
+  zoomOffset: number;
+  setZoomOffset: (offset: number) => void;
   restoreSession: (
     session: PersistedSession,
     buffers: Record<string, string>,
@@ -721,6 +725,11 @@ export const useAppStore = create<AppState>()((set, get) => ({
   groups: [],
   sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
   sidebarVisible: true,
+  zoomOffset: 0,
+  setZoomOffset: (offset) =>
+    set((state) => ({
+      zoomOffset: clampZoomOffset(state.settings.terminalFontSize, offset),
+    })),
   settings: DEFAULT_SETTINGS,
   renamingTabId: null,
   renamingProjectId: null,
@@ -2035,6 +2044,9 @@ export const useAppStore = create<AppState>()((set, get) => ({
   },
 
   restoreSession: async (session, buffers) => {
+    if (typeof session.zoomOffset === "number" && Number.isFinite(session.zoomOffset)) {
+      get().setZoomOffset(session.zoomOffset);
+    }
     const { projects } = get();
     const projectIds = new Set(projects.map((p) => p.id));
 
@@ -2172,6 +2184,7 @@ async function flushSessionSaveOnce(): Promise<void> {
     activeProjectId: s.activeProjectId,
     lastActiveTabByProject: s.lastActiveTabByProject,
     projects: s.projects,
+    zoomOffset: s.zoomOffset,
   });
   // Merge pending lazy-restore state so projects the user hasn't
   // activated this session don't lose their layout. Live state always
@@ -2212,7 +2225,8 @@ useAppStore.subscribe((state, prev) => {
     state.terminals !== prev.terminals ||
     state.activeProjectId !== prev.activeProjectId ||
     state.lastActiveTabByProject !== prev.lastActiveTabByProject ||
-    state.projects !== prev.projects
+    state.projects !== prev.projects ||
+    state.zoomOffset !== prev.zoomOffset
   ) {
     scheduleSessionSave();
   }

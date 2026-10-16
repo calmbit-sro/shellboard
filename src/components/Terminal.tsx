@@ -24,6 +24,7 @@ import { markTerminalBufferDirty } from "../utils/sessionSerialize";
 import { addPromptMark, clearPromptMarks } from "../utils/promptMarks";
 import { isActivatingClick } from "../utils/windowActivation";
 import { decodeOsc52 } from "../utils/osc52";
+import { effectiveFontSize } from "../utils/fontSize";
 
 const IS_MAC =
   typeof navigator !== "undefined" &&
@@ -47,7 +48,9 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
   const fitAndSyncRef = useRef<(() => void) | null>(null);
 
   const fontFamily = useAppStore((s) => s.settings.terminalFontFamily);
-  const fontSize = useAppStore((s) => s.settings.terminalFontSize);
+  const fontSize = useAppStore((s) =>
+    effectiveFontSize(s.settings.terminalFontSize, s.zoomOffset),
+  );
   const themeId = useAppStore((s) => s.settings.terminalTheme);
   const scrollback = useAppStore((s) => s.settings.scrollback);
   const searchingTerminalId = useAppStore((s) => s.searchingTerminalId);
@@ -64,7 +67,10 @@ export function Terminal({ terminalId, isActive }: TerminalProps) {
     const xterm = new XTerm({
       cursorBlink: true,
       fontFamily: initialSettings.terminalFontFamily,
-      fontSize: initialSettings.terminalFontSize,
+      fontSize: effectiveFontSize(
+        initialSettings.terminalFontSize,
+        useAppStore.getState().zoomOffset,
+      ),
       theme: findTheme(initialSettings.terminalTheme).theme,
       scrollback: initialSettings.scrollback,
     });
