@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "../store/appStore";
 import { findTheme } from "../utils/themes";
+import { IS_SCRATCH } from "../utils/windowContext";
 import { Activity, Logo, Moon, Sun } from "./icons";
 import "./TopBar.css";
 
@@ -171,7 +172,7 @@ export function TopBar({ onOpenPalette, onOpenRunningApps }: TopBarProps) {
       <div className="topbar__brand" data-tauri-drag-region>
         <Logo size={13} color="var(--accent-strong)" />
         <span className="topbar__name">ShellBoard</span>
-        {activeProject && (
+        {!IS_SCRATCH && activeProject && (
           <>
             <span className="topbar__sep">/</span>
             <span className="topbar__project">{activeProject.name}</span>

@@ -21,6 +21,7 @@ import { cwdLabel } from "../utils/path";
 import { getTerminal } from "../utils/terminalRegistry";
 import { nearestPromptLine } from "../utils/promptMarks";
 import { randomProjectColor } from "../components/ColorPicker";
+import { IS_SCRATCH } from "../utils/windowContext";
 import { bindingToAccelerator, formatBinding } from "./binding";
 import { resolveBindings, SHORTCUT_ACTIONS } from "./registry";
 
@@ -188,10 +189,15 @@ export function createActionHandlers(
     },
 
     // ── Projects ──
-    "project.add": () => ctx.openAddProject(null),
+    // Scratch windows have no projects or sidebar — these are no-ops there.
+    "project.add": () => {
+      if (IS_SCRATCH) return;
+      ctx.openAddProject(null);
+    },
     // Quick-add the focused terminal's cwd as an ungrouped project. Caption
     // shows `parent/basename` and tracks cwd via OSC 7.
     "project.quickAdd": () => {
+      if (IS_SCRATCH) return;
       const store = useAppStore.getState();
       const leafId = activeAnchor();
       const cwd = leafId ? store.terminals[leafId]?.cwd : undefined;
@@ -216,7 +222,10 @@ export function createActionHandlers(
     },
 
     // ── App / chrome ──
-    "sidebar.toggle": () => void useAppStore.getState().toggleSidebar(),
+    "sidebar.toggle": () => {
+      if (IS_SCRATCH) return;
+      void useAppStore.getState().toggleSidebar();
+    },
     "settings.open": () => ctx.openSettings(),
     "palette.open": () => ctx.openPalette(),
     "app.about": () => ctx.openAbout(),

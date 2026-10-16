@@ -7,6 +7,7 @@ import { cwdLabel } from "../utils/path";
 import { collectLeaves } from "../utils/mosaic";
 import { useFocusTrap } from "../hooks/useFocusTrap";
 import { Search } from "./icons";
+import { IS_SCRATCH } from "../utils/windowContext";
 import "./CommandPalette.css";
 
 const RECENT_MAX = 5;
@@ -153,6 +154,10 @@ export function CommandPalette({
               </Command.Group>
             )}
 
+            {/* Scratch windows have no projects: hide every project-scoped
+                group (projects, snippets, project groups). */}
+            {!IS_SCRATCH && (
+            <>
             <Command.Group heading="Projects" className="palette__group">
               <Command.Item
                 value="add new project"
@@ -272,6 +277,9 @@ export function CommandPalette({
                 </Command.Item>
               ))}
             </Command.Group>
+
+            </>
+            )}
 
             <Command.Group heading="Tabs" className="palette__group">
               <Command.Item

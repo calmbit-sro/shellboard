@@ -29,6 +29,7 @@ import {
   type ActionContext,
 } from "./shortcuts/actions";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
   enableSessionAutosave,
@@ -45,6 +46,12 @@ import {
 } from "./utils/persistence";
 import { findTheme } from "./utils/themes";
 import { checkForUpdate } from "./utils/updateCheck";
+import {
+  IS_SCRATCH,
+  SCRATCH_PROJECT_ID,
+  WINDOW_CONTEXT,
+  scratchProject,
+} from "./utils/windowContext";
 import "./App.css";
 
 const IS_MAC =
@@ -81,6 +88,64 @@ function mixHex(a: string, b: string, tWeight: number): string {
   return `#${[r, g, bl]
     .map((x) => x.toString(16).padStart(2, "0"))
     .join("")}`;
+}
+
+/** Startup for a scratch window: one implicit project, no sidebar, and a
+ * session scoped to this window's own files (see utils/persistence). */
+async function bootScratch(): Promise<void> {
+  if (WINDOW_CONTEXT.kind !== "scratch") return;
+  const { cwd, restored } = WINDOW_CONTEXT;
+  try {
+    const settings = await loadPersisted<Partial<Settings>>(
+      PersistenceKeys.settings,
+    ).catch(() => null);
+    const path = cwd ?? (await invoke<string>("home_dir"));
+    useAppStore.getState().hydrate({
+      projects: [scratchProject(path)],
+      groups: [],
+      sidebarVisible: false,
+      settings: settings ?? undefined,
+    });
+
+    const [session, buffers] = await Promise.all([
+      loadSession().catch(() => null),
+      loadBuffers().catch(() => ({}) as Record<string, string>),
+    ]);
+
+    if (session && (session.tabsByProject[SCRATCH_PROJECT_ID]?.length ?? 0) > 0) {
+      const effectiveBuffers = useAppStore.getState().settings.persistScrollback
+        ? buffers
+        : ({} as Record<string, string>);
+      await useAppStore.getState().restoreSession(session, effectiveBuffers);
+      if (!useAppStore.getState().activeProjectId) {
+        await useAppStore.getState().setActiveProject(SCRATCH_PROJECT_ID);
+      }
+      // Same deferral as the main window — see the comment there.
+      setTimeout(() => enableSessionAutosave(), 3000);
+      return;
+    }
+
+    // A restored window whose session file vanished or is unreadable has
+    // nothing to show — close it rather than opening an unrelated shell.
+    if (restored) {
+      await useAppStore.getState().closeScratchWindowNow();
+      return;
+    }
+
+    const store = useAppStore.getState();
+    await store.setActiveProject(SCRATCH_PROJECT_ID);
+    await useAppStore
+      .getState()
+      .addTab({ projectId: SCRATCH_PROJECT_ID, cwd: cwd ?? undefined });
+    enableSessionAutosave();
+  } catch (err) {
+    console.error("scratch startup failed:", err);
+    if (restored) {
+      void useAppStore.getState().closeScratchWindowNow();
+      return;
+    }
+    enableSessionAutosave();
+  }
 }
 
 function App() {
@@ -194,6 +259,10 @@ function App() {
   useEffect(() => {
     if (initRan.current) return;
     initRan.current = true;
+    if (IS_SCRATCH) {
+      void bootScratch();
+      return;
+    }
     (async () => {
       try {
         const [
@@ -274,6 +343,7 @@ function App() {
   // Update check — fires once per launch, ~5s after boot, only when the
   // user opted in. Result lands in the store; StatusBar reads it.
   useEffect(() => {
+    if (IS_SCRATCH) return;
     const handle = setTimeout(() => {
       const s = useAppStore.getState();
       if (!s.settings.checkForUpdatesOnStartup) return;
@@ -454,7 +524,7 @@ function App() {
         onOpenRunningApps={() => setRunningAppsOpen(true)}
       />
       <div className="app__body">
-        {sidebarVisible && (
+        {!IS_SCRATCH && sidebarVisible && (
           <Sidebar
             onOpenSettings={() => setSettingsOpen(true)}
             onAddProject={(groupId) => {
@@ -466,7 +536,7 @@ function App() {
         <main className="app__main">
           <TabBar onOpenGlobalSearch={() => setGlobalSearchOpen(true)} />
           <TerminalHost />
-          {!activeProjectId && (
+          {!IS_SCRATCH && !activeProjectId && (
             <div className="app__empty">
               {projectCount === 0
                 ? "No projects yet. Click + in the sidebar to add one."
@@ -509,14 +579,16 @@ function App() {
           setShortcutsOpen(true);
         }}
       />
-      <AddProjectFlow
-        open={addProjectOpen}
-        onClose={() => {
-          setAddProjectOpen(false);
-          setAddProjectGroupId(null);
-        }}
-        initialGroupId={addProjectGroupId}
-      />
+      {!IS_SCRATCH && (
+        <AddProjectFlow
+          open={addProjectOpen}
+          onClose={() => {
+            setAddProjectOpen(false);
+            setAddProjectGroupId(null);
+          }}
+          initialGroupId={addProjectGroupId}
+        />
+      )}
       <AboutDialog
         open={aboutOpen}
         onClose={() => setAboutOpen(false)}

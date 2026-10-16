@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { writeText as writeClipboard } from "@tauri-apps/plugin-clipboard-manager";
 import type { MosaicDirection, MosaicNode } from "react-mosaic-component";
 import {
@@ -36,6 +37,7 @@ import { notifyCommandFinished } from "../utils/notify";
 import { DEFAULT_THEME_ID, findTheme } from "../utils/themes";
 import { isValidBinding, type Binding } from "../shortcuts/binding";
 import { isKnownActionId } from "../shortcuts/registry";
+import { IS_SCRATCH } from "../utils/windowContext";
 
 export type TerminalSession = {
   id: string;
@@ -432,6 +434,9 @@ type AppState = {
     session: PersistedSession,
     buffers: Record<string, string>,
   ) => Promise<void>;
+  /** Scratch windows only: close this window immediately, discarding its
+   * state (no confirm). */
+  closeScratchWindowNow: () => Promise<void>;
 };
 
 export type SplitSide = "left" | "right" | "up" | "down";
@@ -1053,6 +1058,13 @@ export const useAppStore = create<AppState>()((set, get) => ({
     //     so we respawn a shell. Inactive ones are left empty (the user
     //     opens a new tab themselves on next switch).
     if (siblingsInProject.length === 0) {
+      // Scratch windows have a single implicit project: losing its last tab
+      // (e.g. `exit` in the last panel) closes the window. Nothing can still
+      // be running, so no confirm.
+      if (IS_SCRATCH) {
+        void get().closeScratchWindowNow();
+        return;
+      }
       const project = get().projects.find((p) => p.id === tab.projectId);
       if (project?.autoCwdName) {
         await get().removeProject(tab.projectId);
@@ -2089,6 +2101,12 @@ export const useAppStore = create<AppState>()((set, get) => ({
     ) {
       await get().setActiveProject(session.activeProjectId);
     }
+  },
+
+  closeScratchWindowNow: async () => {
+    // Stub — Task 5 adds the discard steps before destroy (disable autosave,
+    // kill PTYs, close the window's stores, delete its session/buffer files).
+    await getCurrentWebviewWindow().destroy();
   },
 }));
 
