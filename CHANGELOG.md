@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.0] — 2026-10-18
+
+Scratch windows: Cmd+Shift+N opens an extra window without projects for
+quick one-off work, so you don't need another terminal app for it. Settings
+and sessions carry over untouched, so there's nothing to do on upgrade.
+
 ### Added
 
 - **Scratch windows.** Cmd+Shift+N (Ctrl+Shift+N on Linux/Windows) opens an
