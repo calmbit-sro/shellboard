@@ -259,6 +259,7 @@ function SectionPane({ id }: { id: SectionId }) {
         >
           <UiFontSizeField />
           <ShowGroupCountField />
+          <SortProjectsByNameField />
           <ConfirmCloseSplitTabField />
           <ConfirmBeforeQuittingField />
           <CheckForUpdatesField />
@@ -756,6 +757,23 @@ function ShowGroupCountField({ section }: { section?: string } = {}) {
   );
 }
 
+function SortProjectsByNameField({ section }: { section?: string } = {}) {
+  const { settings } = useSettings();
+  return (
+    <FieldRow
+      label="Sort projects by name"
+      align="top"
+      hint="List projects alphabetically within each group in the sidebar. Turning it off brings back your manual order."
+      section={section}
+    >
+      <Toggle2
+        on={settings.sortProjectsByName}
+        onChange={(v) => set("sortProjectsByName", v)}
+      />
+    </FieldRow>
+  );
+}
+
 function ConfirmCloseSplitTabField({ section }: { section?: string } = {}) {
   const { settings } = useSettings();
   return (
@@ -1098,6 +1116,14 @@ const SEARCH_INDEX: ReadonlyArray<SearchEntry> = [
     label: "Show group project count",
     keywords: "sidebar group count badge projects number",
     render: (s) => <ShowGroupCountField section={s} />,
+  },
+  {
+    id: "sort-projects-by-name",
+    section: "general",
+    sectionLabel: "General",
+    label: "Sort projects by name",
+    keywords: "sidebar sort order alphabetical projects name",
+    render: (s) => <SortProjectsByNameField section={s} />,
   },
   {
     id: "confirm-close-split",

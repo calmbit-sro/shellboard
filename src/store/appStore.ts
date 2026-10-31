@@ -171,6 +171,10 @@ export type Settings = {
   /** Show the project-count badge next to each group header in the
    * sidebar. Off = the chip is hidden, name takes the freed space. */
   showGroupCount: boolean;
+  /** Show projects in the sidebar sorted by name (within each group and the
+   * ungrouped list). Display-only: the manual order is kept and comes back
+   * when this is turned off. */
+  sortProjectsByName: boolean;
   /** Pop a confirmation dialog before closing a tab that contains a split
    * (2+ terminals). Single-terminal tabs always close immediately. Off =
    * never prompt. */
@@ -203,11 +207,20 @@ export const DEFAULT_SETTINGS: Settings = {
   persistScrollback: true,
   showPanelHeader: true,
   showGroupCount: true,
+  sortProjectsByName: false,
   confirmCloseSplitTab: true,
   confirmBeforeQuitting: true,
   terminalClipboardAccess: "ask",
   keybindings: {},
 };
+
+/** Case-insensitive, numeric-aware ("proj2" < "proj10") name order. */
+export function compareProjectNames(a: Project, b: Project): number {
+  return a.name.localeCompare(b.name, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
 
 export const SETTINGS_LIMITS = {
   terminalFontSize: { min: 8, max: 32 },
@@ -559,6 +572,10 @@ function clampSettings(s: Partial<Settings>): Settings {
       typeof s.showGroupCount === "boolean"
         ? s.showGroupCount
         : DEFAULT_SETTINGS.showGroupCount,
+    sortProjectsByName:
+      typeof s.sortProjectsByName === "boolean"
+        ? s.sortProjectsByName
+        : DEFAULT_SETTINGS.sortProjectsByName,
     confirmCloseSplitTab:
       typeof s.confirmCloseSplitTab === "boolean"
         ? s.confirmCloseSplitTab
@@ -1979,14 +1996,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
     // the group's members and write them back into the slots they already
     // occupy — everything outside the group keeps its position.
     const inGroup = (p: Project) => p.groupId === groupId && !p.autoCwdName;
-    const sorted = projects
-      .filter(inGroup)
-      .sort((a, b) =>
-        a.name.localeCompare(b.name, undefined, {
-          numeric: true,
-          sensitivity: "base",
-        }),
-      );
+    const sorted = projects.filter(inGroup).sort(compareProjectNames);
     if (sorted.length < 2) return;
     let i = 0;
     const next = projects.map((p) => (inGroup(p) ? sorted[i++] : p));

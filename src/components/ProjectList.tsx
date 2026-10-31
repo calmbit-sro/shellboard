@@ -17,7 +17,12 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import type { CSSProperties } from "react";
-import { useAppStore, type Project, type ProjectGroup } from "../store/appStore";
+import {
+  compareProjectNames,
+  useAppStore,
+  type Project,
+  type ProjectGroup,
+} from "../store/appStore";
 import { ProjectRow } from "./ProjectRow";
 import { GroupHeader } from "./GroupHeader";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
@@ -55,6 +60,7 @@ export function ProjectList({ onAddProject, search = "" }: ProjectListProps) {
   const activeTabId = useAppStore((s) => s.activeTabId);
   const tabs = useAppStore((s) => s.tabs);
   const terminals = useAppStore((s) => s.terminals);
+  const sortByName = useAppStore((s) => s.settings.sortProjectsByName);
   const lastActiveTabByProject = useAppStore(
     (s) => s.lastActiveTabByProject,
   );
@@ -141,6 +147,12 @@ export function ProjectList({ onAddProject, search = "" }: ProjectListProps) {
     if (p.groupId && projectsByGroup.has(p.groupId) && matchesSearch(p)) {
       projectsByGroup.get(p.groupId)!.push(p);
     }
+  }
+  // Display-only sort; the stored order stays the user's manual one.
+  // Quick-add projects are left alone — their label follows the cwd.
+  if (sortByName) {
+    ungrouped.sort(compareProjectNames);
+    for (const list of projectsByGroup.values()) list.sort(compareProjectNames);
   }
   // Hide groups with no matching projects while searching.
   const visibleGroups = searchQuery
@@ -256,11 +268,14 @@ export function ProjectList({ onAddProject, search = "" }: ProjectListProps) {
         onClick: () => void reorderGroups(groupId, groups[idx + 1].id),
       });
     }
-    items.push({ separator: true });
-    items.push({
-      label: "Sort projects by name",
-      onClick: () => void sortGroupProjects(groupId),
-    });
+    // Redundant while the sidebar already displays every group sorted.
+    if (!sortByName) {
+      items.push({ separator: true });
+      items.push({
+        label: "Sort projects by name",
+        onClick: () => void sortGroupProjects(groupId),
+      });
+    }
     items.push({ separator: true });
     items.push({
       label: "Remove group",
@@ -380,7 +395,8 @@ export function ProjectList({ onAddProject, search = "" }: ProjectListProps) {
         // position precisely inside the target group — within-group order
         // can be fine-tuned with a second drag after the move.
         void moveProjectToGroup(activeId, overProject.groupId);
-      } else {
+      } else if (!sortByName || activeProject.autoCwdName) {
+        // While sorted by name a within-group reorder would be invisible.
         void reorderProjects(activeId, overId);
       }
     }
