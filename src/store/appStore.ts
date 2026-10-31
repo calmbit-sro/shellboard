@@ -348,6 +348,8 @@ type AppState = {
   toggleGroup: (id: string) => Promise<void>;
   moveProjectToGroup: (projectId: string, groupId: string | null) => Promise<void>;
   reorderGroups: (fromId: string, toId: string) => Promise<void>;
+  /** Sort the projects of one group alphabetically by name. */
+  sortGroupProjects: (groupId: string) => Promise<void>;
 
   toggleBroadcast: (tabId: string) => void;
 
@@ -1969,6 +1971,28 @@ export const useAppStore = create<AppState>()((set, get) => ({
     next.splice(to, 0, moved);
     set({ groups: next });
     await saveGroups(next);
+  },
+
+  sortGroupProjects: async (groupId) => {
+    const { projects } = get();
+    // Group membership is implicit in the flat `projects` order, so sort
+    // the group's members and write them back into the slots they already
+    // occupy — everything outside the group keeps its position.
+    const inGroup = (p: Project) => p.groupId === groupId && !p.autoCwdName;
+    const sorted = projects
+      .filter(inGroup)
+      .sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, {
+          numeric: true,
+          sensitivity: "base",
+        }),
+      );
+    if (sorted.length < 2) return;
+    let i = 0;
+    const next = projects.map((p) => (inGroup(p) ? sorted[i++] : p));
+    if (next.every((p, idx) => p === projects[idx])) return;
+    set({ projects: next });
+    await saveProjects(next);
   },
 
   setActiveProject: async (projectId) => {

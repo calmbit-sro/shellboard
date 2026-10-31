@@ -63,6 +63,7 @@ export function ProjectList({ onAddProject, search = "" }: ProjectListProps) {
   const removeProject = useAppStore((s) => s.removeProject);
   const reorderProjects = useAppStore((s) => s.reorderProjects);
   const reorderGroups = useAppStore((s) => s.reorderGroups);
+  const sortGroupProjects = useAppStore((s) => s.sortGroupProjects);
   const moveProjectToGroup = useAppStore((s) => s.moveProjectToGroup);
   const toggleGroup = useAppStore((s) => s.toggleGroup);
   const renameGroup = useAppStore((s) => s.renameGroup);
@@ -255,6 +256,11 @@ export function ProjectList({ onAddProject, search = "" }: ProjectListProps) {
         onClick: () => void reorderGroups(groupId, groups[idx + 1].id),
       });
     }
+    items.push({ separator: true });
+    items.push({
+      label: "Sort projects by name",
+      onClick: () => void sortGroupProjects(groupId),
+    });
     items.push({ separator: true });
     items.push({
       label: "Remove group",
