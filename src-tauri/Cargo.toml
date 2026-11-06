@@ -30,3 +30,7 @@ sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 
 [target.'cfg(windows)'.dependencies]
 which = "8"
+
+# Same version Tauri already links; used to free F10 from the GTK menu bar.
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"

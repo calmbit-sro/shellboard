@@ -17,6 +17,7 @@ import { ConfirmDialog } from "./components/ConfirmDialog";
 import { collectLeaves } from "./utils/mosaic";
 import {
   bindingMods,
+  IS_LINUX,
   matchBinding,
   shortcutCapture,
 } from "./shortcuts/binding";
@@ -167,6 +168,7 @@ function App() {
   const themeId = useAppStore((s) => s.settings.terminalTheme);
   const sidebarVisible = useAppStore((s) => s.sidebarVisible);
   const keybindings = useAppStore((s) => s.settings.keybindings);
+  const f10OpensMenu = useAppStore((s) => s.settings.f10OpensMenu);
   const tabs = useAppStore((s) => s.tabs);
   const pendingCloseTabId = useAppStore((s) => s.pendingCloseTabId);
   const confirmPendingClose = useAppStore((s) => s.confirmPendingClose);
@@ -480,7 +482,8 @@ function App() {
         ? e.metaKey && !e.ctrlKey
         : e.ctrlKey && !e.metaKey;
       if (!mod || e.altKey) return;
-      // Cmd/Ctrl+Shift+P — command palette alias (Cmd/Ctrl+K is editable).
+      // Cmd/Ctrl+Shift+P — command palette alias (the registry binding is
+      // editable; on Linux it defaults to this same combo).
       if (e.shiftKey && e.code === "KeyP") {
         consume();
         setPaletteOpen(true);
@@ -547,6 +550,15 @@ function App() {
   useEffect(() => {
     pushMenuShortcuts();
   }, [keybindings]);
+
+  // GTK's menu bar grabs F10 before the webview sees it. Rust starts with it
+  // off; this restores the user's choice and follows settings changes.
+  useEffect(() => {
+    if (!IS_LINUX) return;
+    void invoke("set_menu_bar_f10", { enabled: f10OpensMenu }).catch(() => {
+      /* off-Tauri — ignore */
+    });
+  }, [f10OpensMenu]);
 
   const pendingCloseTab = pendingCloseTabId
     ? tabs.find((t) => t.id === pendingCloseTabId) ?? null

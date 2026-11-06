@@ -73,7 +73,7 @@ Cmd/Ctrl+Shift+N opens a scratch window: a project-less extra window, discarded 
 
 ### Keyboard shortcut convention
 
-`App.tsx` uses Cmd on macOS and Ctrl on Linux/Windows — **not both**. Plain Ctrl is left to the shell (Ctrl+W = delete word, Ctrl+T = transpose, etc.) on macOS; on Linux/Windows we accept the rare conflict because there's no other modifier. Don't bind plain Ctrl on macOS, and check `IS_MAC` / use the `mod` helper when adding shortcuts.
+`App.tsx` uses Cmd on macOS and Ctrl on Linux/Windows — **not both**. Plain Ctrl+letter is left to the shell (Ctrl+W = delete word, Ctrl+D = EOF, Ctrl+B = tmux prefix, etc.) on macOS and Linux: Linux defaults in `src/shortcuts/registry.ts` go through `ctrlOnLinux` and use Ctrl+Shift, with Ctrl+Alt+Shift for the less frequent actions. Windows still uses plain Ctrl and accepts the conflict. Don't bind plain Ctrl+letter on macOS or Linux, keep `linux_combo` in `src-tauri/src/lib.rs` matching the registry, and show combos through `useBindingLabel` / `formatBinding` rather than hardcoding `⌘`.
 
 ## Cross-platform notes
 
@@ -84,6 +84,7 @@ Cmd/Ctrl+Shift+N opens a scratch window: a project-less extra window, discarded 
 
 ## Things to watch out for
 
+- **GTK's menu bar takes F10 before the webview sees it**, so htop/mc never got it. `apply_menu_bar_f10` clears the global `gtk-menu-bar-accel` at startup; the Linux-only `f10OpensMenu` setting turns it back on. Nothing is needed on macOS.
 - `customTitle` on `Tab` and `autoCwdName` on `Project` exist to suppress automatic retitling — preserve their semantics if you touch tab/project rename code.
 - Shell output is decoded with `String::from_utf8_lossy`, so non-UTF-8 byte sequences become replacement chars. Don't assume bytes round-trip.
 - Update checks (`src/utils/updateCheck.ts`) fire 5 s after launch, only when the user opted in via settings. Result lands in the store; don't surface it elsewhere.

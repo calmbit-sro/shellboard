@@ -20,6 +20,9 @@ export type Binding = {
 export const IS_MAC =
   typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
+export const IS_LINUX =
+  typeof navigator !== "undefined" && /Linux/.test(navigator.platform);
+
 const LONE_MODIFIERS = new Set(["Meta", "Control", "Alt", "Shift"]);
 
 // Map a KeyboardEvent to a stable token. We key off `event.code` (physical key)

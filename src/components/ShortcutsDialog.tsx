@@ -11,6 +11,7 @@ import "./ShortcutsDialog.css";
 
 const MOD = IS_MAC ? "⌘" : "Ctrl";
 const SHIFT = IS_MAC ? "⇧" : "Shift";
+const combo = (...keys: string[]) => keys.join(IS_MAC ? "" : "+");
 
 // Fixed accelerators and terminal-level keys that aren't part of the
 // rebindable registry — listed here so the cheat sheet stays complete.
@@ -18,15 +19,18 @@ const EXTRA_GROUPS: Array<{ heading: string; items: Array<[string, string]> }> =
   {
     heading: "Fixed",
     items: [
-      [`${MOD}1..9`, "Jump to tab N"],
-      [`${MOD}${SHIFT}P`, "Command palette (alias)"],
+      [combo(MOD, "1..9"), "Jump to tab N"],
+      [combo(MOD, SHIFT, "P"), "Command palette (alias)"],
       [`?`, "This shortcut list"],
     ],
   },
   {
     heading: "Terminal",
     items: [
-      [IS_MAC ? `${MOD}C / ${MOD}V` : `Ctrl${SHIFT}C / V`, "Copy / paste"],
+      [
+        IS_MAC ? `${combo(MOD, "C")} / ${combo(MOD, "V")}` : `${combo(MOD, SHIFT, "C")} / V`,
+        "Copy / paste",
+      ],
       [`${MOD}-click URL`, "Open link in browser"],
     ],
   },

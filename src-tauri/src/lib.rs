@@ -79,9 +79,26 @@ fn mac_accel(id: &str) -> &'static str {
 // Linux/Windows fallback combo text (default bindings, formatted like
 // src/shortcuts/binding.ts `formatBinding`). Shown as plain label text — real
 // accelerators there would double-fire with the webview / steal terminal keys
-// (Ctrl+C is SIGINT).
+// (Ctrl+C is SIGINT). Linux overrides the Windows defaults where the registry
+// does (`ctrlOnLinux`), leaving plain Ctrl+letter to the shell.
 #[cfg(not(target_os = "macos"))]
 fn linux_combo(id: &str) -> &'static str {
+    #[cfg(target_os = "linux")]
+    match id {
+        "menu.tab.new" => return "Ctrl+Shift+T",
+        "menu.tab.close" => return "Ctrl+Shift+W",
+        "menu.tab.reopen" => return "Ctrl+Alt+Shift+T",
+        "menu.panel.close" => return "Ctrl+Alt+Shift+W",
+        "menu.split.vertical" => return "Ctrl+Shift+E",
+        "menu.split.horizontal" => return "Ctrl+Shift+O",
+        "menu.search.terminal" => return "Ctrl+Shift+F",
+        "menu.search.global" => return "Ctrl+Alt+Shift+F",
+        "menu.project.quickAdd" => return "Ctrl+Alt+Shift+N",
+        "menu.sidebar.toggle" => return "Ctrl+Shift+B",
+        "menu.settings.open" => return "Ctrl+Shift+,",
+        "menu.palette.open" => return "Ctrl+Shift+P",
+        _ => {}
+    }
     match id {
         "menu.tab.new" => "Ctrl+T",
         "menu.window.newScratch" => "Ctrl+Shift+N",
@@ -347,6 +364,28 @@ fn set_menu_shortcuts(
     .map_err(|e| e.to_string())
 }
 
+// GTK's menu bar takes its accelerator (F10) on the toplevel, before the key
+// reaches the webview, so terminal programs like htop never see it. An empty
+// `gtk-menu-bar-accel` turns that off; the setting is global, so it covers
+// every window. Call on the main thread.
+#[cfg(target_os = "linux")]
+fn apply_menu_bar_f10(enabled: bool) {
+    use gtk::prelude::ObjectExt;
+    if let Some(settings) = gtk::Settings::default() {
+        settings.set_property("gtk-menu-bar-accel", if enabled { "F10" } else { "" });
+    }
+}
+
+// The frontend calls this on Linux only; elsewhere it does nothing.
+#[tauri::command]
+#[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
+fn set_menu_bar_f10(app: AppHandle, enabled: bool) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    app.run_on_main_thread(move || apply_menu_bar_f10(enabled))
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 // The bundle identifier changed from cz.petrhlozek.shellboard to
 // cz.calmbit.shellboard, which moves the per-app config/data dir. To avoid
 // orphaning existing users' projects, sessions and scrollback, copy the old
@@ -447,6 +486,10 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
+            // Off until the frontend hydrates, so F10 works in the terminal
+            // from the first keypress unless the user opted in.
+            #[cfg(target_os = "linux")]
+            apply_menu_bar_f10(false);
             migrate_legacy_config(app.handle());
             restore_scratch_windows(app.handle());
             Ok(())
@@ -469,6 +512,7 @@ pub fn run() {
             git_status,
             running_apps_snapshot,
             set_menu_shortcuts,
+            set_menu_bar_f10,
             open_scratch_window,
             discard_scratch_window,
             window_labels,

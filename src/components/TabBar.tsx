@@ -18,6 +18,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useAppStore, type Tab } from "../store/appStore";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { cwdLabel } from "../utils/path";
+import { useBindingLabel } from "../shortcuts/useBindingLabel";
 import { Broadcast, Close, Plus, Search, Split, SplitH } from "./icons";
 import "./TabBar.css";
 
@@ -26,6 +27,7 @@ type TabBarProps = {
 };
 
 export function TabBar({ onOpenGlobalSearch }: TabBarProps = {}) {
+  const bindingLabel = useBindingLabel();
   const tabs = useAppStore((s) => s.tabs);
   const terminals = useAppStore((s) => s.terminals);
   const activeTabId = useAppStore((s) => s.activeTabId);
@@ -197,7 +199,7 @@ export function TabBar({ onOpenGlobalSearch }: TabBarProps = {}) {
             type="button"
             className="tab-bar__ghost"
             aria-label="Search"
-            title="Search (⌘F)"
+            title={`Search (${bindingLabel("search.global")})`}
             onClick={onOpenGlobalSearch}
           >
             <Search size={13} />

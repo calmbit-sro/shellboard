@@ -17,7 +17,13 @@ import {
 import { findTheme, THEMES } from "../utils/themes";
 import { Cog, Folder, Search, Terminal as TerminalIcon } from "./icons";
 import { ShortcutInput } from "./ShortcutInput";
-import { bindingKey, shortcutCapture, type Binding } from "../shortcuts/binding";
+import {
+  bindingKey,
+  IS_LINUX,
+  IS_MAC,
+  shortcutCapture,
+  type Binding,
+} from "../shortcuts/binding";
 import {
   DEFAULT_BINDINGS,
   resolveBindings,
@@ -63,7 +69,7 @@ const RAIL: ReadonlyArray<{
     label: "Shortcuts",
     icon: () => (
       <span className="settings__rail-glyph" aria-hidden>
-        ⌘
+        {IS_MAC ? "⌘" : "⌨"}
       </span>
     ),
   },
@@ -168,7 +174,7 @@ export function SettingsDialog({
                 esc
               </kbd>
             ) : (
-              <kbd className="kbd">⌘F</kbd>
+              <kbd className="kbd">{IS_MAC ? "⌘F" : "Ctrl+F"}</kbd>
             )}
           </label>
         </header>
@@ -279,6 +285,7 @@ function SectionPane({ id }: { id: SectionId }) {
           <TrackCwdField />
           <NotifyLongCommandsField />
           <ClipboardAccessField />
+          {IS_LINUX && <F10OpensMenuField />}
         </SectionHeader>
       );
     case "appearance":
@@ -774,6 +781,23 @@ function SortProjectsByNameField({ section }: { section?: string } = {}) {
   );
 }
 
+function F10OpensMenuField({ section }: { section?: string } = {}) {
+  const { settings } = useSettings();
+  return (
+    <FieldRow
+      label="F10 opens the menu"
+      align="top"
+      hint="Off passes F10 to the terminal, which programs like htop and mc need. The menu stays available with the mouse."
+      section={section}
+    >
+      <Toggle2
+        on={settings.f10OpensMenu}
+        onChange={(v) => set("f10OpensMenu", v)}
+      />
+    </FieldRow>
+  );
+}
+
 function ConfirmCloseSplitTabField({ section }: { section?: string } = {}) {
   const { settings } = useSettings();
   return (
@@ -797,7 +821,7 @@ function ConfirmBeforeQuittingField({ section }: { section?: string } = {}) {
     <FieldRow
       label="Confirm before quitting"
       align="top"
-      hint="Ask for confirmation before the app quits (Cmd+Q or closing the window)."
+      hint={`Ask for confirmation before the app quits (${IS_MAC ? "Cmd+Q or closing the window" : "closing the window"}).`}
       section={section}
     >
       <Toggle2
@@ -814,7 +838,7 @@ function TrackCwdField({ section }: { section?: string } = {}) {
     <FieldRow
       label="Shell integration"
       align="top"
-      hint="Injects shell hooks (zsh, bash, fish, nushell): OSC 7 keeps the current directory in sync for session restore, OSC 133 marks prompts and command exits — powering prompt jumping (⌘↑/⌘↓), the failed-command tab dot, and long-command notifications. Affects newly-spawned terminals only."
+      hint={`Injects shell hooks (zsh, bash, fish, nushell): OSC 7 keeps the current directory in sync for session restore, OSC 133 marks prompts and command exits — powering prompt jumping (${IS_MAC ? "⌘↑/⌘↓" : "Ctrl+↑/Ctrl+↓"}), the failed-command tab dot, and long-command notifications. Affects newly-spawned terminals only.`}
       section={section}
     >
       <Toggle2
@@ -1198,6 +1222,18 @@ const SEARCH_INDEX: ReadonlyArray<SearchEntry> = [
     keywords: "clipboard osc 52 copy tmux neovim lazygit allow deny ask",
     render: (s) => <ClipboardAccessField section={s} />,
   },
+  ...(IS_LINUX
+    ? [
+        {
+          id: "f10-opens-menu",
+          section: "terminal" as const,
+          sectionLabel: "Terminal",
+          label: "F10 opens the menu",
+          keywords: "f10 menu bar gtk htop mc function key",
+          render: (s: string) => <F10OpensMenuField section={s} />,
+        },
+      ]
+    : []),
   {
     id: "notify-long-commands",
     section: "terminal",

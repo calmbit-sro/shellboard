@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "../store/appStore";
 import { findTheme } from "../utils/themes";
 import { IS_SCRATCH } from "../utils/windowContext";
+import { useBindingLabel } from "../shortcuts/useBindingLabel";
 import { Activity, Logo, Moon, Sun } from "./icons";
 import "./TopBar.css";
 
@@ -72,6 +73,7 @@ type TopBarProps = {
 };
 
 export function TopBar({ onOpenPalette, onOpenRunningApps }: TopBarProps) {
+  const bindingLabel = useBindingLabel();
   const activeProjectId = useAppStore((s) => s.activeProjectId);
   const projects = useAppStore((s) => s.projects);
   const activeProject = projects.find((p) => p.id === activeProjectId);
@@ -204,8 +206,7 @@ export function TopBar({ onOpenPalette, onOpenRunningApps }: TopBarProps) {
         onClick={onOpenPalette}
         title="Command palette"
       >
-        <span className="topbar__cmdk-key">⌘</span>
-        <span className="topbar__cmdk-key">K</span>
+        <span className="topbar__cmdk-key">{bindingLabel("palette.open")}</span>
       </button>
     </div>
   );

@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **F10 setting on Linux.** Settings → Terminal → "F10 opens the menu". It is
+  off by default, so F10 now reaches programs like htop and mc.
+- **Sort projects by name.** Right-click a group and pick "Sort projects by
+  name" to reorder it once. Settings → General → "Sort projects by name" keeps
+  every group in the sidebar alphabetical; turning it off brings back your
+  manual order.
+
+### Changed
+
+- **New default shortcuts on Linux.** Plain Ctrl+letter is left to the shell
+  and terminal programs: Ctrl+D is EOF again, Ctrl+W deletes a word, Ctrl+B
+  reaches tmux. New tab and close tab are Ctrl+Shift+T / W, splits are
+  Ctrl+Shift+E / O, find is Ctrl+Shift+F, sidebar is Ctrl+Shift+B, settings
+  are Ctrl+Shift+, and the command palette is Ctrl+Shift+P. Reopen tab, close
+  panel, global search and quick-add project are Ctrl+Alt+Shift+T / W / F / N.
+  Shortcuts you rebound yourself stay as they are; macOS and Windows don't
+  change.
+
+### Fixed
+
+- **Shortcut hints on Linux and Windows.** The command palette, top bar and
+  Settings showed macOS symbols; they now show the real combo, including your
+  rebindings. The tab bar's search button named the wrong shortcut, and the
+  shortcut list printed combos like `CtrlShiftP` without separators.
+
 ## [2.6.0] — 2026-10-18
 
 Scratch windows: Cmd+Shift+N opens an extra window without projects for

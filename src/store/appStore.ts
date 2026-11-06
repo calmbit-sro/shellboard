@@ -186,6 +186,9 @@ export type Settings = {
    * clipboard with OSC 52. `ask` prompts on first use each launch and flips
    * to `allow` when accepted; `deny` silently drops the writes. */
   terminalClipboardAccess: ClipboardAccessMode;
+  /** Linux only: let GTK's menu bar take F10. Off = F10 reaches the terminal
+   * (htop, mc). Applied through set_menu_bar_f10 in App.tsx. */
+  f10OpensMenu: boolean;
   /** User keyboard-shortcut overrides, keyed by action id (see
    * src/shortcuts/registry.ts). Only overrides are stored; any id absent here
    * falls back to its default binding. Unknown ids are dropped on load. */
@@ -211,6 +214,7 @@ export const DEFAULT_SETTINGS: Settings = {
   confirmCloseSplitTab: true,
   confirmBeforeQuitting: true,
   terminalClipboardAccess: "ask",
+  f10OpensMenu: false,
   keybindings: {},
 };
 
@@ -589,6 +593,10 @@ function clampSettings(s: Partial<Settings>): Settings {
     )
       ? (s.terminalClipboardAccess as ClipboardAccessMode)
       : DEFAULT_SETTINGS.terminalClipboardAccess,
+    f10OpensMenu:
+      typeof s.f10OpensMenu === "boolean"
+        ? s.f10OpensMenu
+        : DEFAULT_SETTINGS.f10OpensMenu,
     keybindings: clampKeybindings(s.keybindings),
   };
 }

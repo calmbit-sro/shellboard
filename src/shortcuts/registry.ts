@@ -4,7 +4,7 @@
 // UI, and the `?` cheat sheet. User overrides live in Settings.keybindings and
 // win over the defaults via resolveBindings().
 
-import { IS_MAC, type Binding } from "./binding";
+import { IS_LINUX, IS_MAC, type Binding } from "./binding";
 
 export type ShortcutCategory = "Tabs" | "Splits" | "Focus" | "Terminal" | "App";
 
@@ -26,21 +26,50 @@ function primary(extra: Partial<Binding> & { key: string }): Binding {
   return { ...PRIMARY, ...extra };
 }
 
+// Linux terminals keep plain Ctrl+letter for the shell and TUIs (Ctrl+D = EOF,
+// Ctrl+W = delete word, Ctrl+B = tmux prefix…) and use Ctrl+Shift for the app.
+// `combo` is Ctrl plus the given modifiers on Linux; everywhere else `other`.
+function ctrlOnLinux(
+  other: Binding,
+  combo: Pick<Binding, "shift" | "alt" | "key">,
+): Binding {
+  return IS_LINUX ? { ctrl: true, ...combo } : other;
+}
+
 export const SHORTCUT_ACTIONS: ShortcutAction[] = [
   // ── Tabs ──
-  { id: "tab.new", category: "Tabs", label: "New tab", defaultBinding: primary({ key: "t" }) },
-  { id: "tab.close", category: "Tabs", label: "Close tab", defaultBinding: primary({ key: "w" }) },
+  {
+    id: "tab.new",
+    category: "Tabs",
+    label: "New tab",
+    defaultBinding: ctrlOnLinux(primary({ key: "t" }), { shift: true, key: "t" }),
+  },
+  {
+    id: "tab.close",
+    category: "Tabs",
+    label: "Close tab",
+    defaultBinding: ctrlOnLinux(primary({ key: "w" }), { shift: true, key: "w" }),
+  },
   {
     id: "panel.close",
     category: "Tabs",
     label: "Close panel",
-    defaultBinding: primary({ shift: true, key: "w" }),
+    defaultBinding: ctrlOnLinux(primary({ shift: true, key: "w" }), {
+      shift: true,
+      alt: true,
+      key: "w",
+    }),
   },
   {
     id: "tab.reopen",
     category: "Tabs",
     label: "Reopen closed tab",
-    defaultBinding: primary({ shift: true, key: "t" }),
+    // Ctrl+Alt+T alone would be the desktop's "open terminal" on Ubuntu.
+    defaultBinding: ctrlOnLinux(primary({ shift: true, key: "t" }), {
+      shift: true,
+      alt: true,
+      key: "t",
+    }),
   },
   {
     id: "tab.next",
@@ -76,13 +105,16 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
     id: "split.vertical",
     category: "Splits",
     label: "Split vertical (panel right)",
-    defaultBinding: primary({ key: "d" }),
+    defaultBinding: ctrlOnLinux(primary({ key: "d" }), { shift: true, key: "e" }),
   },
   {
     id: "split.horizontal",
     category: "Splits",
     label: "Split horizontal (panel down)",
-    defaultBinding: primary({ shift: true, key: "d" }),
+    defaultBinding: ctrlOnLinux(primary({ shift: true, key: "d" }), {
+      shift: true,
+      key: "o",
+    }),
   },
   {
     id: "split.left",
@@ -140,13 +172,17 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
     id: "search.terminal",
     category: "Terminal",
     label: "Find in terminal",
-    defaultBinding: primary({ key: "f" }),
+    defaultBinding: ctrlOnLinux(primary({ key: "f" }), { shift: true, key: "f" }),
   },
   {
     id: "search.global",
     category: "Terminal",
     label: "Global search",
-    defaultBinding: primary({ shift: true, key: "f" }),
+    defaultBinding: ctrlOnLinux(primary({ shift: true, key: "f" }), {
+      shift: true,
+      alt: true,
+      key: "f",
+    }),
   },
   // Prompt jumping needs shell integration on (OSC 133 marks) — a no-op
   // otherwise.
@@ -182,25 +218,29 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
     id: "project.quickAdd",
     category: "App",
     label: "Quick-add project from cwd",
-    defaultBinding: primary({ key: "n" }),
+    defaultBinding: ctrlOnLinux(primary({ key: "n" }), {
+      shift: true,
+      alt: true,
+      key: "n",
+    }),
   },
   {
     id: "sidebar.toggle",
     category: "App",
     label: "Toggle sidebar",
-    defaultBinding: primary({ key: "b" }),
+    defaultBinding: ctrlOnLinux(primary({ key: "b" }), { shift: true, key: "b" }),
   },
   {
     id: "settings.open",
     category: "App",
     label: "Open settings",
-    defaultBinding: primary({ key: "," }),
+    defaultBinding: ctrlOnLinux(primary({ key: "," }), { shift: true, key: "," }),
   },
   {
     id: "palette.open",
     category: "App",
     label: "Command palette",
-    defaultBinding: primary({ key: "k" }),
+    defaultBinding: ctrlOnLinux(primary({ key: "k" }), { shift: true, key: "p" }),
   },
   {
     id: "window.newScratch",

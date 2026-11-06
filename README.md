@@ -144,7 +144,7 @@ A `cargo:rerun-if-changed=icons` directive in `src-tauri/build.rs` ensures the b
 
 ## Keyboard shortcuts
 
-`Cmd` on macOS, `Ctrl` elsewhere.
+`Cmd` on macOS, `Ctrl` on Windows. Linux keeps plain `Ctrl+letter` for the shell and uses the combos in the Linux table below instead.
 
 | Shortcut                      | Action                            |
 |-------------------------------|-----------------------------------|
@@ -162,6 +162,25 @@ A `cargo:rerun-if-changed=icons` directive in `src-tauri/build.rs` ensures the b
 | `Cmd/Ctrl+Shift+F`            | Global search across terminals    |
 | `Cmd/Ctrl+,`                  | Open settings                     |
 | `Cmd/Ctrl+Shift+P`            | Open command palette              |
+
+**On Linux:**
+
+| Shortcut                 | Action                            |
+|--------------------------|-----------------------------------|
+| `Ctrl+Shift+T`           | New tab in active project         |
+| `Ctrl+Shift+W`           | Close active tab                  |
+| `Ctrl+Alt+Shift+T`       | Reopen closed tab                 |
+| `Ctrl+Alt+Shift+W`       | Close active split panel          |
+| `Ctrl+Shift+E`           | Split vertical (new panel right)  |
+| `Ctrl+Shift+O`           | Split horizontal (new panel down) |
+| `Ctrl+Shift+F`           | Find in focused terminal          |
+| `Ctrl+Alt+Shift+F`       | Global search across terminals    |
+| `Ctrl+Alt+Shift+N`       | Quick-add project from cwd        |
+| `Ctrl+Shift+B`           | Hide / show sidebar               |
+| `Ctrl+Shift+,`           | Open settings                     |
+| `Ctrl+Shift+P`           | Open command palette              |
+
+F10 reaches the terminal by default. To have it open the menu, turn on Settings → Terminal → "F10 opens the menu".
 
 **In terminal:**
 

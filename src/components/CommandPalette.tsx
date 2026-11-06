@@ -9,6 +9,7 @@ import { useFocusTrap } from "../hooks/useFocusTrap";
 import { Search } from "./icons";
 import { IS_SCRATCH } from "../utils/windowContext";
 import { openScratchFromFocused } from "../shortcuts/actions";
+import { useBindingLabel } from "../shortcuts/useBindingLabel";
 import "./CommandPalette.css";
 
 const RECENT_MAX = 5;
@@ -32,6 +33,7 @@ export function CommandPalette({
   onOpenGlobalSearch,
   onOpenShortcuts,
 }: CommandPaletteProps) {
+  const bindingLabel = useBindingLabel();
   const projects = useAppStore((s) => s.projects);
   const groups = useAppStore((s) => s.groups);
   const activeProjectId = useAppStore((s) => s.activeProjectId);
@@ -289,7 +291,7 @@ export function CommandPalette({
                 className="palette__item"
               >
                 New Window
-                <span className="palette__hint">⌘⇧N</span>
+                <span className="palette__hint">{bindingLabel("window.newScratch")}</span>
               </Command.Item>
             </Command.Group>
 
@@ -300,7 +302,7 @@ export function CommandPalette({
                 className="palette__item"
               >
                 New tab
-                <span className="palette__hint">⌘T</span>
+                <span className="palette__hint">{bindingLabel("tab.new")}</span>
               </Command.Item>
               {activeTabId && (
                 <>
@@ -325,7 +327,7 @@ export function CommandPalette({
                     className="palette__item"
                   >
                     Close tab
-                    <span className="palette__hint">⌘W</span>
+                    <span className="palette__hint">{bindingLabel("tab.close")}</span>
                   </Command.Item>
                 </>
               )}
@@ -335,7 +337,7 @@ export function CommandPalette({
                 className="palette__item"
               >
                 Close panel
-                <span className="palette__hint">⌘⇧W</span>
+                <span className="palette__hint">{bindingLabel("panel.close")}</span>
               </Command.Item>
               <Command.Item
                 value="next tab"
@@ -343,7 +345,7 @@ export function CommandPalette({
                 className="palette__item"
               >
                 Next tab
-                <span className="palette__hint">⌃Tab</span>
+                <span className="palette__hint">{bindingLabel("switcher.next")}</span>
               </Command.Item>
               <Command.Item
                 value="previous tab"
@@ -351,7 +353,7 @@ export function CommandPalette({
                 className="palette__item"
               >
                 Previous tab
-                <span className="palette__hint">⌃⇧Tab</span>
+                <span className="palette__hint">{bindingLabel("switcher.prev")}</span>
               </Command.Item>
             </Command.Group>
 
@@ -362,7 +364,7 @@ export function CommandPalette({
                 className="palette__item"
               >
                 Split right
-                <span className="palette__hint">⌘D</span>
+                <span className="palette__hint">{bindingLabel("split.vertical")}</span>
               </Command.Item>
               <Command.Item
                 value="split down horizontal"
@@ -370,7 +372,7 @@ export function CommandPalette({
                 className="palette__item"
               >
                 Split down
-                <span className="palette__hint">⌘⇧D</span>
+                <span className="palette__hint">{bindingLabel("split.horizontal")}</span>
               </Command.Item>
             </Command.Group>
 
@@ -434,7 +436,7 @@ export function CommandPalette({
                 className="palette__item"
               >
                 Open settings…
-                <span className="palette__hint">⌘,</span>
+                <span className="palette__hint">{bindingLabel("settings.open")}</span>
               </Command.Item>
               <Command.Item
                 value="toggle cwd tracking osc7"
@@ -451,7 +453,7 @@ export function CommandPalette({
                 className="palette__item"
               >
                 {sidebarVisible ? "Hide" : "Show"} sidebar
-                <span className="palette__hint">⌘B</span>
+                <span className="palette__hint">{bindingLabel("sidebar.toggle")}</span>
               </Command.Item>
               <Command.Item
                 value="global search buffers"
@@ -459,7 +461,7 @@ export function CommandPalette({
                 className="palette__item"
               >
                 Search across all terminals…
-                <span className="palette__hint">⌘⇧F</span>
+                <span className="palette__hint">{bindingLabel("search.global")}</span>
               </Command.Item>
               <Command.Item
                 value="keyboard shortcuts help cheat sheet"
