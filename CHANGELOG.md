@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.0] — 2026-11-07
+
+Linux gets terminal-friendly shortcuts: plain Ctrl+letter goes to the shell
+again (Ctrl+D, Ctrl+W, the tmux prefix), and Shellboard's own shortcuts move
+to Ctrl+Shift. **If you're on Linux, your default shortcuts change**; see
+below for the new combos. Shortcuts you rebound yourself stay as they are,
+and nothing changes on macOS or Windows. Also new: sorting projects by name,
+and F10 reaching htop and mc on Linux.
+
 ### Added
 
 - **F10 setting on Linux.** Settings → Terminal → "F10 opens the menu". It is
